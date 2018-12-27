@@ -1,5 +1,6 @@
 from ensemble import WeightedEnsembleClassifier
 from skmultiflow.data.file_stream import FileStream
+from skmultiflow.evaluation.evaluate_prequential import EvaluatePrequential
 
 # prepare the stream
 # reuse the electricity stream for test
@@ -9,3 +10,10 @@ stream.prepare_for_use()
 
 # instantiate a classifier
 clf = WeightedEnsembleClassifier()
+
+evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=20000, show_plot=True,
+                                metrics=['accuracy', 'kappa'], output_file='result_elec.csv',
+                                batch_size=10) # I set the batch size to 10
+
+# 4. Run
+evaluator.evaluate(stream=stream, model=clf)
