@@ -5,13 +5,13 @@ from skmultiflow.evaluation.evaluate_prequential import EvaluatePrequential
 # prepare the stream
 # reuse the electricity stream for test
 path_data = 'data/'
-stream = FileStream(path_data + 'elec.csv', n_targets=1, target_idx=-1)
+stream = FileStream(path_data + 'covertype.csv', n_targets=1, target_idx=-1)
 stream.prepare_for_use()
 
 # instantiate a classifier
 clf = WeightedEnsembleClassifier()
 
-evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=20000, show_plot=True,
+evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=2000, show_plot=True,
                                 metrics=['accuracy', 'kappa'], output_file='result_elec.csv',
                                 batch_size=10) # I set the batch size to 10
 
