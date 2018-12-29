@@ -2,6 +2,7 @@ import numpy as np
 import heapq as hq
 from skmultiflow.trees import HoeffdingTree
 
+
 class WeightedEnsembleClassifier:
     """The classifier that follows the rules of Weighted Ensemble Classifier"""
 
