@@ -12,7 +12,7 @@ stream.prepare_for_use()
 clf = WeightedEnsembleClassifier()
 
 evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=2000, show_plot=True,
-                                metrics=['accuracy', 'kappa'], output_file='result_elec.csv',
+                                metrics=['accuracy', 'kappa'], output_file='result.csv',
                                 batch_size=10) # I set the batch size to 10
 
 # 4. Run
