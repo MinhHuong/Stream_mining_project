@@ -124,13 +124,29 @@ class WeightedEnsembleClassifier:
 
     def predict(self, X):
         """
-
         :param X:
-        :return:
+        :return: avg_weighted - list of prediction
         """
-        # TODO
-        N = X.shape[0]
-        return np.ones((N,))
+        weight_sum = 0
+        predict = []
+        for model in self.models:
+            clf = model.clf
+            pred = clf.predict(X)
+            weight = model.weight
+            weight_sum += weight
+            predict.append(pred * weight)
+
+        pred_column_sum = [sum(i) for i in zip(*predict)]
+        avg_weighted = [x / weight_sum for x in pred_column_sum]
+        
+        for i,f in enumerate(avg_weighted):
+        	if f<0.5:
+        		avg_weighted[i] = 0
+        	else:
+        		avg_weighted[i] = 1
+
+        return avg_weighted
+
 
 
     def compute_MSE(self, y, probabs, labels):
