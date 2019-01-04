@@ -1,6 +1,8 @@
 import numpy as np
 import heapq as hq
 from skmultiflow.trees import HoeffdingTree
+import operator
+
 
 
 class WeightedEnsembleClassifier:
@@ -124,13 +126,34 @@ class WeightedEnsembleClassifier:
 
     def predict(self, X):
         """
+        Predicts the labels of X in a multiClass classification setting
+        The prediction is done via weighted voting (choosing the maximum)
 
-        :param X:
-        :return:
+
+              
+        :return: a list containing predictions
         """
-        # TODO
-        N = X.shape[0]
-        return np.ones((N,))
+        weight_sum = 0
+        predict_wighted_voting = []
+        dict_label_instance = {} #Dict with size X.shape[0] and each value is a dict too, Ex: {0:{0:0.2,1:0.7},1:{1:0.3,2:0.5}}
+        for model in self.models: # For each classifier in self.models, predict the labels for X
+            clf = model.clf
+            pred = clf.predict(X)
+            weight = model.weight
+            for i,label in enumerate(pred.tolist()): 
+                if i not in dict_label_instance: #maintain the dictionary 
+                    dict_label_instance[i] = {label:weight}
+                else:
+                    try:
+                        dict_label_instance[i][label] += weight
+                    except:
+                        dict_label_instance[i][label] = weight
+
+        for key, dic in dict_label_instance.items():
+            max_value = max(dic.items(), key=operator.itemgetter(1))[0] # return the key of max value in a dict
+            predict_wighted_voting.append(max_value)
+
+        return predict_wighted_voting
 
 
     def compute_MSE(self, y, probabs, labels):
