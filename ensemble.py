@@ -1,8 +1,8 @@
 import numpy as np
 import heapq as hq
 from skmultiflow.trees import HoeffdingTree
+from skmultiflow.bayes import NaiveBayes
 import operator
-
 
 
 class WeightedEnsembleClassifier:
@@ -35,19 +35,24 @@ class WeightedEnsembleClassifier:
             return self.weight < other.weight
 
 
-    def __init__(self, K=10):
+    def __init__(self, K=10, learner="tree"):
         """
         Create a new ensemble
-        :param K: the maximum number of models allowed in this ensemble
+        :param K:       the maximum number of models allowed in this ensemble
+        :param learner: indicates the weak/individual learners in the ensemble,
+                        possible choices are: "tree" for Hoeffding tree,
+                        "bayes" for Naive Bayes
+                        TODO have RIPPER also ? https://algorithmia.com/algorithms/weka/JRip
         """
 
         # top K classifiers
         self.K = K
 
-        # the classifier with the minimum weight
-        self.bottom_clf = None
+        # base learner
+        self.base_learner = learner
 
-        # a heap of weighted classifier s.t. the 1st element is the classifier with the smallest weight
+        # a heap of weighted classifier
+        # s.t. the 1st element is the classifier with the smallest weight (worst one)
         self.models = []
 
 
@@ -65,25 +70,35 @@ class WeightedEnsembleClassifier:
         :return: self
         """
 
-        # TODO Do the Algorithm 2
-
         # if the classes are not provided, we derive it from y
+        N, D = X.shape
+        class_count = None # avoid calling unique multiple times
         if classes is None:
-            classes = np.unique(y)
-        L = len(classes)
+            classes, class_count = np.unique(y, return_counts=True)
 
         # (1) train classifier C' from X
-        # TODO allows a wider variety of classifiers (maybe chosen by the users?)
-        C_new = HoeffdingTree() # for now let's suppose we only train Hoeffding Tree
-        C_new.partial_fit(X, y)
+        # allows a wider variety of classifiers
+        # not a lot but still...
+        if self.base_learner == "bayes": # Naive Bayes
+            C_new = NaiveBayes()
+        else: # by default, set to Hoeffding Tree
+            C_new = HoeffdingTree()
+
+        C_new.partial_fit(X, y, classes=classes)
 
         # (2) compute error rate/benefit of C_new via cross-validation on S
 
         # MSE_r: compute the baseline error rate given by a random classifier
-        # we assume that the class distribution is uniform i.e. p(c) = 1/|classes|
-        # TODO later we may derive the class distribution from the labels
-        p_c = 1/L
-        MSE_r = L * (p_c * (1 - p_c) ** 2)
+        # a. class distribution learnt from the data
+        # use this improve the performance
+        if class_count is None:
+            _, class_count = np.unique(classes, return_counts=True)
+        class_dist = [class_count[i] / N for i, c in enumerate(classes)]
+        MSE_r = np.sum([class_dist[i] * ((1 - class_dist[i]) ** 2) for i, c in enumerate(classes)])
+
+        # b. assumption: uniform distribution
+        # p_c = 1/L
+        # MSE_r = L * (p_c * ((1 - p_c) ** 2))
 
         # MSE_i: compute the error rate of C_new via cross-validation on X
         # f_ic = the probability given by C_new that x is an instance of class c
@@ -96,32 +111,23 @@ class WeightedEnsembleClassifier:
         # the unique labels of the data chunk it is trained on
         clf_new = self.WeightedClassifier(clf=C_new, weight=w_new, chunk_labels=classes)
 
-        # update the bottom classifier
-        # if the bottom classifier has not been set, set it to the newly trained classifier
-        # then push it to the heap
-        if self.bottom_clf is None:
-            self.bottom_clf = clf_new
-            hq.heappush(self.models, clf_new)
-
         # (4) update the weights of each classifier in the ensemble
         for i, clf in enumerate(self.models):
-            MSE_i = self.compute_MSE(y, clf.clf.predict_proba(X), clf.chunk_labels) # (1) apply Ci on S to derive MSE_i
-            clf.weights = MSE_r - MSE_i # (2) update wi based on (8) or (9)
+            MSE_i = self.compute_MSE(y, clf.clf.predict_proba(X), clf.chunk_labels) # apply Ci on S to derive MSE_i
+            clf.weights = MSE_r - MSE_i # update wi based on (8) or (9)
 
         # (5) C <- top K weighted classifiers in C U { C' }
-        # selecting top K models by dropping the worst model i.e.
-        # the classifier with the smallest weight in the ensemble
+        # selecting top K models by dropping the worst model i.e. clf with smallest weight in C U { C' }
         if len(self.models) < self.K:
             # just push the new model in if there is still slots
             hq.heappush(self.models, clf_new)
         else:
             # if the new model has a weight > that of the bottom classifier (worst one)
-            # do nothing if the new model has a weight even lower than that of the worst classifier
-            if clf_new.weight > self.bottom_clf.weight:
+            if clf_new.weight > self.models[0].weight:
                 hq.heappushpop(self.models, clf_new) # push the new classifier and remove the bottom one
-                self.bottom_clf = self.models[0] # update the bottom classifier
+            # do nothing if the new model has a weight even lower than that of the worst classifier
 
-        return self.models
+        return self
 
 
     def predict(self, X):
@@ -131,22 +137,26 @@ class WeightedEnsembleClassifier:
 
         :return: a list containing predictions
         """
-        weight_sum = 0
-        predict_weighted_voting = []
-        list_label_instance = [] #List with size X.shape[0] and each value is a dict too, Ex: [{0:0.2,1:0.7},{1:0.3,2:0.5}]
-        for model in self.models: # For each classifier in self.models, predict the labels for X
+
+        # List with size X.shape[0] and each value is a dict too,
+        # Ex: [{0:0.2, 1:0.7}, {1:0.3, 2:0.5}]
+        list_label_instance = []
+
+        # For each classifier in self.models, predict the labels for X
+        for model in self.models:
             clf = model.clf
             pred = clf.predict(X)
             weight = model.weight
-            for i,label in enumerate(pred.tolist()): 
+            for i, label in enumerate(pred.tolist()):
                 if i == len(list_label_instance): # maintain the dictionary
-                    list_label_instance.append({label:weight})
+                    list_label_instance.append({label: weight})
                 else:
                     try:
                         list_label_instance[i][label] += weight
                     except:
                         list_label_instance[i][label] = weight
 
+        predict_weighted_voting = []
         for dic in list_label_instance:
             max_value = max(dic.items(), key=operator.itemgetter(1))[0] # return the key of max value in a dict
             predict_weighted_voting.append(max_value)
@@ -182,10 +192,10 @@ class WeightedEnsembleClassifier:
         N = len(y)
         sum_error = 0
         for i, c in enumerate(y):
-            if c not in labels: # if it is a label unseen when training, set the probability to 0
-                probab_ic = 0
-            else: # else, find the corresponding label index
-                index_label_c = np.where(labels == c)[0][0] # find the index of this label c in probabs[i]
+            # if the label in y is unseen when training, skip it, don't include it in the error
+            if c in labels:
+                index_label_c = np.where(labels == c)[0][0]  # find the index of this label c in probabs[i]
                 probab_ic = probabs[i][index_label_c]
-            sum_error += (1 - probab_ic) ** 2
+                sum_error += (1 - probab_ic) ** 2
+
         return (sum_error / N)
