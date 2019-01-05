@@ -1,6 +1,8 @@
 import numpy as np
 import heapq as hq
 from skmultiflow.trees import HoeffdingTree
+import operator
+
 
 
 class WeightedEnsembleClassifier:
@@ -124,29 +126,37 @@ class WeightedEnsembleClassifier:
 
     def predict(self, X):
         """
-        :param X:
-        :return: avg_weighted - list of prediction
+        Predicts the labels of X in a multiClass classification setting
+        The prediction is done via weighted voting (choosing the maximum)
+
+        :return: a list containing predictions
         """
         weight_sum = 0
-        predict = []
+        predict_weighted_voting = []
+
+        # Dict with size X.shape[0] and each value is a dict too
+        # Ex: {0:{0:0.2,1:0.7},1:{1:0.3,2:0.5}}
+        dict_label_instance = {}
+
+        # For each classifier in self.models, predict the labels for X
         for model in self.models:
             clf = model.clf
             pred = clf.predict(X)
             weight = model.weight
-            weight_sum += weight
-            predict.append(pred * weight)
+            for i, label in enumerate(pred.tolist()):
+                if i not in dict_label_instance: # maintain the dictionary
+                    dict_label_instance[i] = {label: weight}
+                else:
+                    try:
+                        dict_label_instance[i][label] += weight
+                    except:
+                        dict_label_instance[i][label] = weight
 
-        pred_column_sum = [sum(i) for i in zip(*predict)]
-        avg_weighted = [x / weight_sum for x in pred_column_sum]
-        
-        for i,f in enumerate(avg_weighted):
-        	if f<0.5:
-        		avg_weighted[i] = 0
-        	else:
-        		avg_weighted[i] = 1
+        for key, dic in dict_label_instance.items():
+            max_value = max(dic.items(), key=operator.itemgetter(1))[0] # return the key of max value in a dict
+            predict_weighted_voting.append(max_value)
 
-        return avg_weighted
-
+        return predict_weighted_voting
 
 
     def compute_MSE(self, y, probabs, labels):
