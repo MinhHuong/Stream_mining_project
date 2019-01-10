@@ -10,7 +10,8 @@ class WeightedEnsembleClassifier:
 
     class WeightedClassifier:
         """
-        An inner class that eases the control of weights and crazy shit
+        An inner class that eases the control of weights and additional information
+        of a classifier in the ensemble
         """
 
         def __init__(self, clf, weight, chunk_labels):
@@ -77,8 +78,7 @@ class WeightedEnsembleClassifier:
             classes, class_count = np.unique(y, return_counts=True)
 
         # (1) train classifier C' from X
-        # allows a wider variety of classifiers
-        # not a lot but still...
+        # allows a wider variety of classifiers (not a lot but still...)
         if self.base_learner == "bayes": # Naive Bayes
             C_new = NaiveBayes()
         else: # by default, set to Hoeffding Tree
@@ -89,32 +89,18 @@ class WeightedEnsembleClassifier:
         # (2) compute error rate/benefit of C_new via cross-validation on S
 
         # MSE_r: compute the baseline error rate given by a random classifier
-        # a. class distribution learnt from the data
-        # use this improve the performance
-        if class_count is None:
-            _, class_count = np.unique(classes, return_counts=True)
-        class_dist = [class_count[i] / N for i, c in enumerate(classes)]
-        MSE_r = np.sum([class_dist[i] * ((1 - class_dist[i]) ** 2) for i, c in enumerate(classes)])
+        baseline_score = self.compute_random_baseline(classes=classes, class_count=class_count, size=N)
 
-        # b. assumption: uniform distribution
-        # p_c = 1/L
-        # MSE_r = L * (p_c * ((1 - p_c) ** 2))
+        # (3) derive weight w_new for C_new using (8) MSE or (9) benefit
+        w_new = self.compute_weight(X=X, y=y, clf=C_new, random_score=baseline_score)
 
-        # MSE_i: compute the error rate of C_new via cross-validation on X
-        # f_ic = the probability given by C_new that x is an instance of class c
-        MSE_i = self.compute_MSE(y, C_new.predict_proba(X), classes)
-
-        # (3) derive weight w_new for C_new using (8) or (9)
-        w_new = MSE_r - MSE_i
-
-        # create a new classifier with its associated weight,
-        # the unique labels of the data chunk it is trained on
+        # create a new classifier with its weight, the unique labels of the data chunk it is trained on
         clf_new = self.WeightedClassifier(clf=C_new, weight=w_new, chunk_labels=classes)
 
         # (4) update the weights of each classifier in the ensemble
-        for i, clf in enumerate(self.models):
-            MSE_i = self.compute_MSE(y, clf.clf.predict_proba(X), clf.chunk_labels) # apply Ci on S to derive MSE_i
-            clf.weights = MSE_r - MSE_i # update wi based on (8) or (9)
+        for i, model in enumerate(self.models):
+            # the weight w_i is computed based on either MSE or benefit
+            model.weights = self.compute_weight(X=X, y=y, clf=model.clf, random_score=baseline_score)
 
         # (5) C <- top K weighted classifiers in C U { C' }
         # selecting top K models by dropping the worst model i.e. clf with smallest weight in C U { C' }
@@ -176,7 +162,7 @@ class WeightedEnsembleClassifier:
         has a label that appears in S_L i.e. the result of C.predict_proba(S)
         is an array of shape (|S|, 4) instead of (|S|, 7)
         - Now we want to use C to predict the label probability of a new chunk of data S',
-        and S' may have only 2 unique labels appear in it (for example S'_L = [1 2]), so
+        and S' may have only 2 unique labels appear in it (for example S'_L = [1 3]), so
         for an example in S', if we want to ask for the probability of the label 2, C cannot
         give it to us because it has not seen this label 2 when it is trained on the chunk S.
         If such case appears we simply set the probability of the missing label to 0
@@ -189,6 +175,7 @@ class WeightedEnsembleClassifier:
         :param labels: the unique labels associated to the classifier that gives this predicted probability
         :return: the mean square error MSE_i
         """
+        print("MSE in WeightedEnsemble")
         N = len(y)
         sum_error = 0
         for i, c in enumerate(y):
@@ -199,3 +186,38 @@ class WeightedEnsembleClassifier:
                 sum_error += (1 - probab_ic) ** 2
 
         return (sum_error / N)
+
+
+    def compute_weight(self, X, y, clf, random_score):
+        """
+        Compute the weight of a classifier given the random score (calculated on a random learner).
+        The weight relies on either (1) MSE if it is a normal classifier,
+        or (2) benefit if it is a cost-sensitive one
+
+        :param X: the training data
+        :param y: the training labels
+        :param clf: a classifier of skmultiflow (not WeightedClassifier)
+        :param random_score: the baseline calculated on a random learner
+        :return: the weight of clf
+        """
+        # print("Weight in WeightedEnsemble")
+
+        MSE_i = self.compute_MSE(y=y, probabs=clf.predict_proba(X), labels=y)
+        return random_score - MSE_i
+
+
+    def compute_random_baseline(self, classes, class_count, size):
+        """
+        This method computes the score produced by a random classifier,
+        served as a baseline. The random score is MSE_r in case of a normal classifier,
+        but it changes to b_r in case of a cost-sensitive one
+        :return:
+        """
+        # print("Random baseline in WeightedEnsemble")
+
+        # based on the class distribution of the data
+        if class_count is None:
+            _, class_count = np.unique(classes, return_counts=True)
+        class_dist = [class_count[i] / size for i, c in enumerate(classes)]
+        MSE_r = np.sum([class_dist[i] * ((1 - class_dist[i]) ** 2) for i, c in enumerate(classes)])
+        return MSE_r

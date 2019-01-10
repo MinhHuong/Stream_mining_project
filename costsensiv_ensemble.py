@@ -238,3 +238,46 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
                     prediction[i] = 0
 
         return prediction
+
+
+    def compute_benefit(self):
+        """
+        Computes the benefit
+
+        :return:
+        """
+        print("Benefit in CostSensitive")
+
+        return 0
+
+
+    def compute_weight(self, X, y, clf, random_score):
+        """
+        Overrides the function defined in the parent class WeightedEnsembleClassifier,
+        such that the weight is now computed by the benefits and not MSE
+
+        :param X:
+        :param y:
+        :param clf:
+        :param random_score:
+        :return:
+        """
+        # print("Weight in CostSensitive")
+
+        b_i = self.compute_benefit()
+        return b_i - random_score
+
+
+    def compute_random_baseline(self, classes, class_count, size):
+        """
+        Overrides the function defined in the parent class WeightedEnsembleClassifier,
+        such that the baseline is now computed by the benefit of a random classifier
+
+        :param classes:
+        :param class_count:
+        :param size:
+        :return:
+        """
+        print("Random baseline in CostSensitive")
+
+        return 0
