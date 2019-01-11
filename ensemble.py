@@ -3,6 +3,7 @@ import heapq as hq
 from skmultiflow.trees import HoeffdingTree
 from skmultiflow.bayes import NaiveBayes
 import operator
+import sortedcontainers as sc
 
 
 class WeightedEnsembleClassifier:
@@ -54,7 +55,10 @@ class WeightedEnsembleClassifier:
 
         # a heap of weighted classifier
         # s.t. the 1st element is the classifier with the smallest weight (worst one)
-        self.models = []
+        # self.models = []
+
+        # a sorted list if classifiers
+        self.models = sc.SortedList()
 
 
     def partial_fit(self, X, y=None, classes=None, weight=None):
@@ -73,15 +77,14 @@ class WeightedEnsembleClassifier:
 
         # if the classes are not provided, we derive it from y
         N, D = X.shape
-        class_count = None # avoid calling unique multiple times
+        class_count = None  # avoid calling unique multiple times
         if classes is None:
             classes, class_count = np.unique(y, return_counts=True)
 
-        # (1) train classifier C' from X
-        # allows a wider variety of classifiers (not a lot but still...)
-        if self.base_learner == "bayes": # Naive Bayes
+        # (1) train classifier C' from X, allows a wider variety of classifiers (not a lot but still...)
+        if self.base_learner == "bayes":
             C_new = NaiveBayes()
-        else: # by default, set to Hoeffding Tree
+        else:
             C_new = HoeffdingTree()
 
         C_new.partial_fit(X, y, classes=classes)
@@ -92,26 +95,22 @@ class WeightedEnsembleClassifier:
         baseline_score = self.compute_random_baseline(classes=classes, class_count=class_count, size=N)
 
         # (3) derive weight w_new for C_new using (8) MSE or (9) benefit
-        w_new = self.compute_weight(X=X, y=y, clf=C_new, random_score=baseline_score)
-
         # create a new classifier with its weight, the unique labels of the data chunk it is trained on
-        clf_new = self.WeightedClassifier(clf=C_new, weight=w_new, chunk_labels=classes)
+        clf_new = self.WeightedClassifier(clf=C_new, weight=0, chunk_labels=classes)
+        w_new = self.compute_weight(X=X, y=y, clf=clf_new, random_score=baseline_score)
+        clf_new.weight = w_new
 
         # (4) update the weights of each classifier in the ensemble
         for i, model in enumerate(self.models):
-            # the weight w_i is computed based on either MSE or benefit
-            model.weights = self.compute_weight(X=X, y=y, clf=model.clf, random_score=baseline_score)
+            model.weights = self.compute_weight(X=X, y=y, clf=model, random_score=baseline_score)
 
         # (5) C <- top K weighted classifiers in C U { C' }
-        # selecting top K models by dropping the worst model i.e. clf with smallest weight in C U { C' }
         if len(self.models) < self.K:
-            # just push the new model in if there is still slots
-            hq.heappush(self.models, clf_new)
+            self.models.add(clf_new)  # push new model in if classifier not full
         else:
-            # if the new model has a weight > that of the bottom classifier (worst one)
-            if clf_new.weight > self.models[0].weight:
-                hq.heappushpop(self.models, clf_new) # push the new classifier and remove the bottom one
-            # do nothing if the new model has a weight even lower than that of the worst classifier
+            if clf_new.weight > 0 and clf_new.weight > self.models[0].weight:
+                self.models.pop(0)
+                self.models.add(clf_new)
 
         return self
 
@@ -175,7 +174,7 @@ class WeightedEnsembleClassifier:
         :param labels: the unique labels associated to the classifier that gives this predicted probability
         :return: the mean square error MSE_i
         """
-        print("MSE in WeightedEnsemble")
+
         N = len(y)
         sum_error = 0
         for i, c in enumerate(y):
@@ -200,9 +199,8 @@ class WeightedEnsembleClassifier:
         :param random_score: the baseline calculated on a random learner
         :return: the weight of clf
         """
-        # print("Weight in WeightedEnsemble")
 
-        MSE_i = self.compute_MSE(y=y, probabs=clf.predict_proba(X), labels=y)
+        MSE_i = self.compute_MSE(y=y, probabs=clf.clf.predict_proba(X), labels=clf.chunk_labels)
         return random_score - MSE_i
 
 
@@ -213,7 +211,6 @@ class WeightedEnsembleClassifier:
         but it changes to b_r in case of a cost-sensitive one
         :return:
         """
-        # print("Random baseline in WeightedEnsemble")
 
         # based on the class distribution of the data
         if class_count is None:

@@ -71,9 +71,14 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
             F_vect = np.zeros(self.K) # Fk at each stage
             err_x = np.zeros(self.K)  # error at each stage k in K
 
-            for k, model in enumerate(self.models):  # compute F_k(y) for k = 1,...,K
+            # compute F_k(y) for k = 1,...,K
+            k = -1
+            for model in self.models.islice(start=0, stop=self.K, reverse=True):
+                k += 1
+
                 clf = model.clf
                 sum_weight += model.weight
+                print("Weight:", model.weight)
 
                 # compute the curent probability
                 # if the probability is not initialized we call the predict proba method
@@ -123,7 +128,7 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         for i in range(0, len(self.bins)):
             # it's a bit tricky because sometimes we can have bin's that doesn't have any input example
             # what should we do ?? --> it remains at 0
-            for k in range(0, len(self.models)):
+            for k in range(self.K):
                 if self.bins[i][k]['num'] > 0:
                     # divide the sum of error by the number of examples in the bin
                     self.bins[i][k]['mean'] = self.bins[i][k]['mean'] / self.bins[i][k]['num']
@@ -156,9 +161,13 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
             F_k = 0
 
             # for k in= {1,2.....K} do
-            for k, clf in enumerate(self.models):
+            k = -1
+            for clf in self.models.islice(start=0, stop=self.K, reverse=True):
+                k += 1
+
                 # (1) compute the corresponding Fk(x)
                 sum_weight += clf.weight  # sum of weights
+                print(k, clf.weight)
 
                 # compute one part of Fk(y) with the weights (be careful: sum_weight may be 0)
                 F_k = (F_k * sum_weight) / sum_weight if sum_weight != 0 else 0
@@ -246,7 +255,7 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
         :return:
         """
-        print("Benefit in CostSensitive")
+        # print("Benefit in CostSensitive")
 
         return 0
 
@@ -278,6 +287,6 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         :param size:
         :return:
         """
-        print("Random baseline in CostSensitive")
+        # print("Random baseline in CostSensitive")
 
         return 0
