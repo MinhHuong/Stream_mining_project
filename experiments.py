@@ -13,12 +13,10 @@ hyper_gen = HyperplaneGenerator(random_state=seed,
 hyper_gen.prepare_for_use()
 
 evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=20000, show_plot=True,
-                                metrics=['accuracy', 'kappa'], output_file='result.csv',
-                                batch_size=1000)
+                                metrics=['mean_square_error'], output_file='result.csv',
+                                batch_size=250)
 
-clf = WeightedEnsembleClassifier()
+clf = WeightedEnsembleClassifier(K=100, learner="tree")
 
 # 4. Run
 evaluator.evaluate(stream=hyper_gen, model=clf)
-
-
