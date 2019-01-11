@@ -14,7 +14,7 @@ hyper_gen.prepare_for_use()
 
 evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=20000, show_plot=True,
                                 metrics=['mean_square_error'], output_file='result.csv',
-                                batch_size=250)
+                                batch_size=500)
 
 clf = WeightedEnsembleClassifier(K=100, learner="tree")
 
