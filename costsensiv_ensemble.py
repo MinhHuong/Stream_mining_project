@@ -1,6 +1,7 @@
 import numpy as np
 from skmultiflow.trees import HoeffdingTree
 from ensemble import WeightedEnsembleClassifier
+import time as tm
 
 
 class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
@@ -61,6 +62,8 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         '''
 
         # (1) compute Fk for each example seen in X
+        print("(in cost-sensiv) enough data")
+        tm.sleep(2)
 
         # retrieve the probability of predicting fraud for each model (K models)
         predict_proba_fraud = len(self.models) * [None]
@@ -78,7 +81,6 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
                 clf = model.clf
                 sum_weight += model.weight
-                print("Weight:", model.weight)
 
                 # compute the curent probability
                 # if the probability is not initialized we call the predict proba method
@@ -167,7 +169,6 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
                 # (1) compute the corresponding Fk(x)
                 sum_weight += clf.weight  # sum of weights
-                print(k, clf.weight)
 
                 # compute one part of Fk(y) with the weights (be careful: sum_weight may be 0)
                 F_k = (F_k * sum_weight) / sum_weight if sum_weight != 0 else 0

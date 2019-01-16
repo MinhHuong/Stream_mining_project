@@ -4,6 +4,7 @@ from skmultiflow.trees import HoeffdingTree
 from skmultiflow.bayes import NaiveBayes
 import operator
 import sortedcontainers as sc
+import time as tm
 
 
 class WeightedEnsembleClassifier:
@@ -53,10 +54,6 @@ class WeightedEnsembleClassifier:
         # base learner
         self.base_learner = learner
 
-        # a heap of weighted classifier
-        # s.t. the 1st element is the classifier with the smallest weight (worst one)
-        # self.models = []
-
         # a sorted list if classifiers
         self.models = sc.SortedList()
 
@@ -77,9 +74,12 @@ class WeightedEnsembleClassifier:
 
         # if the classes are not provided, we derive it from y
         N, D = X.shape
-        class_count = None  # avoid calling unique multiple times
+
+        # retrieve the classes and class count
         if classes is None:
             classes, class_count = np.unique(y, return_counts=True)
+        else:
+            _, class_count = np.unique(y, return_counts=True)
 
         # (1) train classifier C' from X, allows a wider variety of classifiers (not a lot but still...)
         if self.base_learner == "bayes":
@@ -87,7 +87,8 @@ class WeightedEnsembleClassifier:
         else:
             C_new = HoeffdingTree()
 
-        C_new.partial_fit(X, y, classes=classes)
+        C_new.fit(X, y, classes=classes)
+        #self.base_clf.fit(X, y)
 
         # (2) compute error rate/benefit of C_new via cross-validation on S
 
@@ -95,7 +96,6 @@ class WeightedEnsembleClassifier:
         baseline_score = self.compute_random_baseline(classes=classes, class_count=class_count, size=N)
 
         # (3) derive weight w_new for C_new using (8) MSE or (9) benefit
-        # create a new classifier with its weight, the unique labels of the data chunk it is trained on
         clf_new = self.WeightedClassifier(clf=C_new, weight=0, chunk_labels=classes)
         w_new = self.compute_weight(X=X, y=y, clf=clf_new, random_score=baseline_score)
         clf_new.weight = w_new
@@ -106,11 +106,11 @@ class WeightedEnsembleClassifier:
 
         # (5) C <- top K weighted classifiers in C U { C' }
         if len(self.models) < self.K:
-            self.models.add(clf_new)  # push new model in if classifier not full
+            self.models.add(value=clf_new)
         else:
             if clf_new.weight > 0 and clf_new.weight > self.models[0].weight:
                 self.models.pop(0)
-                self.models.add(clf_new)
+                self.models.add(value=clf_new)
 
         return self
 
@@ -127,6 +127,9 @@ class WeightedEnsembleClassifier:
         # Ex: [{0:0.2, 1:0.7}, {1:0.3, 2:0.5}]
         list_label_instance = []
 
+        # use sum_weights for normalization
+        sum_weights = np.sum([clf.weight for clf in self.models])
+
         # For each classifier in self.models, predict the labels for X
         for model in self.models:
             clf = model.clf
@@ -134,12 +137,12 @@ class WeightedEnsembleClassifier:
             weight = model.weight
             for i, label in enumerate(pred.tolist()):
                 if i == len(list_label_instance): # maintain the dictionary
-                    list_label_instance.append({label: weight})
+                    list_label_instance.append({label: weight / sum_weights})
                 else:
                     try:
-                        list_label_instance[i][label] += weight
+                        list_label_instance[i][label] += weight / sum_weights
                     except:
-                        list_label_instance[i][label] = weight
+                        list_label_instance[i][label] = weight / sum_weights
 
         predict_weighted_voting = []
         for dic in list_label_instance:
@@ -183,6 +186,8 @@ class WeightedEnsembleClassifier:
                 index_label_c = np.where(labels == c)[0][0]  # find the index of this label c in probabs[i]
                 probab_ic = probabs[i][index_label_c]
                 sum_error += (1 - probab_ic) ** 2
+            else:
+                sum_error += 1
 
         return (sum_error / N)
 
@@ -213,8 +218,6 @@ class WeightedEnsembleClassifier:
         """
 
         # based on the class distribution of the data
-        if class_count is None:
-            _, class_count = np.unique(classes, return_counts=True)
         class_dist = [class_count[i] / size for i, c in enumerate(classes)]
         MSE_r = np.sum([class_dist[i] * ((1 - class_dist[i]) ** 2) for i, c in enumerate(classes)])
         return MSE_r
