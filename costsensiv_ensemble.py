@@ -66,7 +66,10 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         predict_proba_fraud = len(self.models) * [None]
 
         for i, instance in enumerate(y):  # for each y in S do
+            # here compute the benifit call befinit call
+
             sum_weight = 0
+
             current_F = 0
             F_vect = np.zeros(self.K) # Fk at each stage
             err_x = np.zeros(self.K)  # error at each stage k in K
@@ -78,7 +81,7 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
                 clf = model.clf
                 sum_weight += model.weight
-                print("Weight:", model.weight)
+                # print("Weight:", model.weight)
 
                 # compute the curent probability
                 # if the probability is not initialized we call the predict proba method
@@ -167,7 +170,7 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
                 # (1) compute the corresponding Fk(x)
                 sum_weight += clf.weight  # sum of weights
-                print(k, clf.weight)
+                # print(k, clf.weight)
 
                 # compute one part of Fk(y) with the weights (be careful: sum_weight may be 0)
                 F_k = (F_k * sum_weight) / sum_weight if sum_weight != 0 else 0
@@ -249,20 +252,52 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         return prediction
 
 
-    def compute_benefit(self):
+    def compute_benefit(self, X, y, probabs, labels):
         """
-        Computes the benefit
 
+        Computes the benefit
+        :param y is the real class
         :return:
         """
-        # print("Benefit in CostSensitive")
-
-        return 0
 
 
+        sum_benefit = 0
+
+        for i, c in enumerate(y):
+            # c is the real label
+            # if the label in y is unseen when training, skip it, don't include it in the error
+            # 0 --> not fraud
+            # 1 --> fraud
+
+
+            for j, cprime in enumerate(labels) :
+
+                # (1) compute the benefit matrix
+                benefit_c_cprime = 0
+                if c == 1 : # if it's the actual fraud == 1
+                    if cprime == 1 :
+                        # the amount - the
+                        benefit_c_cprime = X[i][-1] - self.cost
+                else : # if it's the actual not fraud == 0
+                    if cprime == 1 :
+                        benefit_c_cprime= - self.cost
+
+
+                # (2) get the probability
+                index_label_cprime = np.where(labels == cprime)[0][0]  # find the index of this label c in probabs[i]
+                probab_ic = probabs[i][index_label_cprime]
+
+                sum_benefit += probab_ic * benefit_c_cprime
+
+
+
+
+        return sum_benefit
+
+    
     def compute_weight(self, X, y, clf, random_score):
         """
-        Overrides the function defined in the parent class WeightedEnsembleClassifier,
+         Overrides the function defined in the parent class WeightedEnsembleClassifier,
         such that the weight is now computed by the benefits and not MSE
 
         :param X:
@@ -271,9 +306,9 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         :param random_score:
         :return:
         """
-        # print("Weight in CostSensitive")
 
-        b_i = self.compute_benefit()
+
+        b_i = self.compute_benefit( X, y, probabs=clf.clf.predict_proba(X), labels=clf.chunk_labels)
         return b_i - random_score
 
 
@@ -287,6 +322,12 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         :param size:
         :return:
         """
-        # print("Random baseline in CostSensitive")
+
+        # based on the class distribution of the data
+        if class_count is None:
+            _, class_count = np.unique(classes, return_counts=True)
+        class_dist = [class_count[i] / size for i, c in enumerate(classes)]
+        MSE_r = np.sum([class_dist[i] * ((1 - class_dist[i]) ** 2) for i, c in enumerate(classes)])
+        # return MSE_r
 
         return 0
