@@ -1,10 +1,8 @@
 import numpy as np
-import heapq as hq
-from skmultiflow.trees import HoeffdingTree
-from skmultiflow.bayes import NaiveBayes
+from sklearn.tree import DecisionTreeClassifier
 import operator
+import copy as cp
 import sortedcontainers as sc
-import time as tm
 
 
 class WeightedEnsembleClassifier:
@@ -37,8 +35,7 @@ class WeightedEnsembleClassifier:
             """
             return self.weight < other.weight
 
-
-    def __init__(self, K=10, learner="tree"):
+    def __init__(self, K=10, base_learner=DecisionTreeClassifier()):
         """
         Create a new ensemble
         :param K:       the maximum number of models allowed in this ensemble
@@ -52,11 +49,10 @@ class WeightedEnsembleClassifier:
         self.K = K
 
         # base learner
-        self.base_learner = learner
+        self.base_learner = base_learner
 
         # a sorted list if classifiers
         self.models = sc.SortedList()
-
 
     def partial_fit(self, X, y=None, classes=None, weight=None):
         """
@@ -81,14 +77,13 @@ class WeightedEnsembleClassifier:
         else:
             _, class_count = np.unique(y, return_counts=True)
 
-        # (1) train classifier C' from X, allows a wider variety of classifiers (not a lot but still...)
-        if self.base_learner == "bayes":
-            C_new = NaiveBayes()
-        else:
-            C_new = HoeffdingTree()
+        # (1) train classifier C' from X by creating a deep copy from the base learner
+        C_new = cp.deepcopy(self.base_learner)
 
-        C_new.fit(X, y, classes=classes)
-        #self.base_clf.fit(X, y)
+        try:
+            C_new.fit(X, y)
+        except NotImplementedError:
+            C_new.partial_fit(X, y, classes, weight)
 
         # (2) compute error rate/benefit of C_new via cross-validation on S
 
@@ -113,7 +108,6 @@ class WeightedEnsembleClassifier:
                 self.models.add(value=clf_new)
 
         return self
-
 
     def predict(self, X):
         """
@@ -150,7 +144,6 @@ class WeightedEnsembleClassifier:
             predict_weighted_voting.append(max_value)
 
         return predict_weighted_voting
-
 
     def compute_MSE(self, y, probabs, labels):
         """
@@ -191,7 +184,6 @@ class WeightedEnsembleClassifier:
 
         return (sum_error / N)
 
-
     def compute_weight(self, X, y, clf, random_score):
         """
         Compute the weight of a classifier given the random score (calculated on a random learner).
@@ -207,7 +199,6 @@ class WeightedEnsembleClassifier:
 
         MSE_i = self.compute_MSE(y=y, probabs=clf.clf.predict_proba(X), labels=clf.chunk_labels)
         return random_score - MSE_i
-
 
     def compute_random_baseline(self, classes, class_count, size):
         """

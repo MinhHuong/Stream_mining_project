@@ -3,6 +3,9 @@ from costsensiv_ensemble import CostSensitiveWeightedEnsembleClassifier
 from skmultiflow.data.file_stream import FileStream
 from skmultiflow.evaluation.evaluate_prequential import EvaluatePrequential
 from skmultiflow.trees import HoeffdingTree
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.linear_model import LogisticRegression
 
 # prepare the stream
 # reuse the electricity stream for test
@@ -15,7 +18,7 @@ stream.prepare_for_use()
 
 # instantiate a classifier
 # clf = CostSensitiveWeightedEnsembleClassifier()
-clf = WeightedEnsembleClassifier(K=100, learner="tree")
+clf = WeightedEnsembleClassifier(K=100, base_learner=DecisionTreeClassifier())
 # h = [clf, HoeffdingTree()]
 
 

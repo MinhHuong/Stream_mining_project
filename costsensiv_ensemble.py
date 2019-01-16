@@ -1,5 +1,5 @@
 import numpy as np
-from skmultiflow.trees import HoeffdingTree
+from sklearn.tree import DecisionTreeClassifier
 from ensemble import WeightedEnsembleClassifier
 import time as tm
 
@@ -9,7 +9,7 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
     An ensemble that focuses rather on cost-sensitive ensemble classifier
     """
 
-    def __init__(self, K=10, learner="tree", epsilon=3, cost=90):
+    def __init__(self, K=10, base_learner=DecisionTreeClassifier(), epsilon=3, cost=90):
         """
         Create a new ensemble
         :param K: the maximum number of models allowed in this ensemble
@@ -18,14 +18,13 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         """
 
         # let the parent do the stuff
-        super().__init__(K=K, learner=learner)
+        super().__init__(K=K, base_learner=base_learner)
 
         # init statistics of bins (i,k) each epsilon bin has an array k
         self.bins = epsilon * [K * [{'mean': 0, 'var': 0, 'num': 0}]]
 
         # a cost (because it is a cost sensitive classifier)
         self.cost = cost
-
 
     def partial_fit(self, X, y=None, classes=None, weight=None):
         """
@@ -60,10 +59,6 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
         compute the sum of weight of each classifier for each example seen 
         '''
-
-        # (1) compute Fk for each example seen in X
-        print("(in cost-sensiv) enough data")
-        tm.sleep(2)
 
         # retrieve the probability of predicting fraud for each model (K models)
         predict_proba_fraud = len(self.models) * [None]
@@ -140,7 +135,6 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
                     self.bins[i][k]['mean']) ** 2
 
         return self
-
 
     def predict(self, X, t = 3):
         """
@@ -249,7 +243,6 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
         return prediction
 
-
     def compute_benefit(self):
         """
         Computes the benefit
@@ -259,7 +252,6 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         # print("Benefit in CostSensitive")
 
         return 0
-
 
     def compute_weight(self, X, y, clf, random_score):
         """
@@ -276,7 +268,6 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
         b_i = self.compute_benefit()
         return b_i - random_score
-
 
     def compute_random_baseline(self, classes, class_count, size):
         """
