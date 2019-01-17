@@ -105,7 +105,9 @@ def data_generator_different_chunk(chunk_sizes, pretrain_size=1000, max_samples=
     df.to_csv(output_summary)
     return df
 
-def data_generator_different_K(Ks,chunk_size=500,pretrain_size=1000,max_samples=20000,learner="tree",WeightedEnsemble = True,show_plot=True):
+def data_generator_different_K(Ks, chunk_size=500, pretrain_size=1000,
+                               max_samples=20000, learner=DecisionTreeClassifier(),
+                               WeightedEnsemble=True, show_plot=True):
     # single Gk is wrong right now, there is no K for single Gk
     df = pd.DataFrame()
     time = []
@@ -138,7 +140,7 @@ def data_generator_different_K(Ks,chunk_size=500,pretrain_size=1000,max_samples=
 		                                batch_size=chunk_size)
 
         if WeightedEnsemble:
-            clf = WeightedEnsembleClassifier(K=K, learner=learner)
+            clf = WeightedEnsembleClassifier(K=K, base_learner=learner)
         else:
             clf = HoeffdingTree() #TODO --> like 6.1 paper
 
@@ -153,15 +155,19 @@ def data_generator_different_K(Ks,chunk_size=500,pretrain_size=1000,max_samples=
     df['MSE'] = error
     df['K'] = Ks
 
-    print(df)
+    # print(df)
     df.to_csv(output_summary)
+
     return df
 
 
 if __name__ == '__main__':
-    chunks = [200,400,600,800,1000,1200]
-    Ks = [2,4,6,8,10,12]
-    data_generator_different_chunk(chunk_sizes=chunks,show_plot=False,WeightedEnsemble=True)
-    data_generator_different_chunk(chunk_sizes=chunks,show_plot=False,WeightedEnsemble=False)
-    data_generator_different_K(Ks=Ks,show_plot=False,WeightedEnsemble=True)
-    data_generator_different_K(Ks=Ks,show_plot=False,WeightedEnsemble=False)
+    chunks = range(300, 1100, 100)
+    Ks = [1] + list(range(2, 51, 1))
+    # data_generator_different_chunk(chunk_sizes=chunks,show_plot=False,WeightedEnsemble=True)
+    # data_generator_different_chunk(chunk_sizes=chunks,show_plot=False,WeightedEnsemble=False)
+
+    for chunk in chunks:
+        data_generator_different_K(Ks=Ks, chunk_size=chunk, show_plot=False, WeightedEnsemble=True)
+
+    # data_generator_different_K(Ks=Ks,show_plot=False,WeightedEnsemble=False)

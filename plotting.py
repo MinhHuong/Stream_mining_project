@@ -70,10 +70,6 @@ def draw_plot_diff_Ks(df_ensemble,df_single):
 	fig.legend()
 	plt.show()
 
-
-
-
-
 if __name__ == '__main__':
 
 	try:
