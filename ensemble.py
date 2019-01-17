@@ -77,9 +77,6 @@ class WeightedEnsembleClassifier:
 
         # if the classes are not provided, we derive it from y
         N, D = X.shape
-        class_count = None  # avoid calling unique multiple times
-        if classes is None:
-            classes, class_count = np.unique(y, return_counts=True)
 
         # (1) train classifier C' from X, allows a wider variety of classifiers (not a lot but still...)
         if self.base_learner == "bayes":
@@ -87,12 +84,14 @@ class WeightedEnsembleClassifier:
         else:
             C_new = HoeffdingTree()
 
-        C_new.partial_fit(X, y, classes=classes)
+        if classes is None:
+            classes, _ = np.unique(y, return_counts=True)
 
+        C_new.partial_fit(X, y, classes=classes)
         # (2) compute error rate/benefit of C_new via cross-validation on S
 
         # MSE_r: compute the baseline error rate given by a random classifier
-        baseline_score = self.compute_random_baseline(classes=classes, class_count=class_count, size=N)
+        baseline_score = self.compute_random_baseline(X=X, classes=classes, y = y, size=N)
 
         # (3) derive weight w_new for C_new using (8) MSE or (9) benefit
         # create a new classifier with its weight, the unique labels of the data chunk it is trained on
@@ -109,6 +108,7 @@ class WeightedEnsembleClassifier:
             self.models.add(clf_new)  # push new model in if classifier not full
         else:
             if clf_new.weight > 0 and clf_new.weight > self.models[0].weight:
+                print(clf_new.weight)
                 self.models.pop(0)
                 self.models.add(clf_new)
 
@@ -204,13 +204,16 @@ class WeightedEnsembleClassifier:
         return random_score - MSE_i
 
 
-    def compute_random_baseline(self, classes, class_count, size):
+    def compute_random_baseline(self, classes, y , size):
         """
         This method computes the score produced by a random classifier,
         served as a baseline. The random score is MSE_r in case of a normal classifier,
         but it changes to b_r in case of a cost-sensitive one
         :return:
         """
+        class_count = None  # avoid calling unique multiple times
+        if classes is None:
+            classes, class_count = np.unique(y, return_counts=True)
 
         # based on the class distribution of the data
         if class_count is None:

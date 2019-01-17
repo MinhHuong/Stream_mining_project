@@ -16,9 +16,9 @@ stream.prepare_for_use()
 clf = CostSensitiveWeightedEnsembleClassifier()
 #clf = WeightedEnsembleClassifier(K=10, learner="tree")
 
-evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=2000, show_plot=True,
-                                metrics=['mean_square_error'], output_file='result.csv',
-                                batch_size=10)
+evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=10000, show_plot=True,
+                                metrics=['accuracy', 'kappa'], output_file='result.csv',
+                                batch_size=100)
 
 # 4. Run
 evaluator.evaluate(stream=stream, model=clf)
