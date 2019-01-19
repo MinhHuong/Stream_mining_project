@@ -86,6 +86,7 @@ class WeightedEnsembleClassifier:
             C_new.partial_fit(X, y, classes, weight)
 
         # (2) compute error rate/benefit of C_new via cross-validation on S
+        
 
         # MSE_r: compute the baseline error rate given by a random classifier
         baseline_score = self.compute_random_baseline(classes=classes, class_count=class_count, size=N)

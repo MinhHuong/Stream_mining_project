@@ -2,6 +2,10 @@ from skmultiflow.data.hyper_plane_generator import HyperplaneGenerator
 from ensemble import WeightedEnsembleClassifier
 from skmultiflow.evaluation.evaluate_prequential import EvaluatePrequential
 from skmultiflow.trees import HoeffdingTree
+from skmultiflow.meta.oza_bagging import OzaBagging
+from skmultiflow.lazy.knn import KNN
+from skmultiflow.lazy.knn_adwin import KNNAdwin
+from skmultiflow.meta.adaptive_random_forests import AdaptiveRandomForest
 
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import mean_squared_error
@@ -53,7 +57,7 @@ hyper_gen.prepare_for_use()
 # print("Score of Decision Tree:", sum_mse / num_iter)
 
 def data_generator_different_chunk(chunk_sizes, pretrain_size=1000, max_samples=20000,
-                                   K=8, learner="tree", WeightedEnsemble = True, show_plot=True):
+                                   K=8, learner=HoeffdingTree(), WeightedEnsemble = True, show_plot=True):
     df = pd.DataFrame()
     time = []
     error = []
@@ -82,23 +86,24 @@ def data_generator_different_chunk(chunk_sizes, pretrain_size=1000, max_samples=
         output_summary += '_summary.csv'
 
         evaluator = EvaluatePrequential(pretrain_size=pretrain_size, max_samples=max_samples, show_plot=show_plot,
-		                                metrics=['mean_square_error'], output_file=output_file+'.csv',
+		                                metrics=['kappa', 'accuracy'], output_file=output_file+'.csv',
 		                                batch_size=chunk)
 
         if WeightedEnsemble:
-            clf = WeightedEnsembleClassifier(K=K, learner=learner)
+            clf = WeightedEnsembleClassifier(K=K, base_learner=learner)
         else:
-            clf = HoeffdingTree() #TODO
+            #clf = HoeffdingTree() #TODO
+            clf = DecisionTreeClassifier()
 
         # 4. Run
         evaluator.evaluate(stream=hyper_gen, model=clf)
         time.append(evaluator._end_time-evaluator._start_time)
-        MSE = evaluator._data_buffer.get_data(metric_id=constants.MSE, data_id=constants.MEAN)[-1]
-        MSE *= 100 #%
+        # MSE = evaluator._data_buffer.get_data(metric_id=constants.MSE, data_id=constants.MEAN)[-1]
+        # MSE *= 100 #%
         # error.append(MSE)
 
     df['time'] = time
-    df['MSE'] = error
+    # df['MSE'] = error
     df['chunk'] = chunk_sizes
 
     print(df)
@@ -116,12 +121,15 @@ def data_generator_different_K(Ks, chunk_size=500, pretrain_size=1000,
         output_file = 'experiments/'
         output_summary = 'experiments/'
 
-        if WeightedEnsemble:
-            output_file += 'ensemble/'
-            output_summary += 'ensemble/'
-        else:
-            output_file += 'single/'
-            output_summary += 'single/'
+        # if WeightedEnsemble:
+        #     output_file += 'ensemble/'
+        #     output_summary += 'ensemble/'
+        # else:
+        #     output_file += 'single/'
+        #     output_summary += 'single/'
+
+        output_file += 'rf/'
+        output_summary += 'rf/'
 
         output_file += 'diff_k/'
         output_summary += 'diff_k/summary/'
@@ -139,10 +147,12 @@ def data_generator_different_K(Ks, chunk_size=500, pretrain_size=1000,
 		                                metrics=['mean_square_error'], output_file=output_file+'.csv',
 		                                batch_size=chunk_size)
 
-        if WeightedEnsemble:
-            clf = WeightedEnsembleClassifier(K=K, base_learner=learner)
-        else:
-            clf = HoeffdingTree() #TODO --> like 6.1 paper
+        # if WeightedEnsemble:
+        #     clf = WeightedEnsembleClassifier(K=K, base_learner=learner)
+        # else:
+        #     #clf = DecisionTreeClassifier()
+        #     clf = HoeffdingTree() #TODO --> like 6.1 paper
+        clf = AdaptiveRandomForest(n_estimators=K)
 
         # 4. Run
         evaluator.evaluate(stream=hyper_gen, model=clf)
@@ -162,12 +172,17 @@ def data_generator_different_K(Ks, chunk_size=500, pretrain_size=1000,
 
 
 if __name__ == '__main__':
-    chunks = range(300, 1100, 100)
+    num_chunks = 100
+    chunks = range(200, 1100, 100)
     Ks = [1] + list(range(2, 51, 1))
-    # data_generator_different_chunk(chunk_sizes=chunks,show_plot=False,WeightedEnsemble=True)
+    data_generator_different_chunk(chunk_sizes=chunks, max_samples=100000, K=10,
+                                   show_plot=False, WeightedEnsemble=True)
+
     # data_generator_different_chunk(chunk_sizes=chunks,show_plot=False,WeightedEnsemble=False)
 
-    for chunk in chunks:
-        data_generator_different_K(Ks=Ks, chunk_size=chunk, show_plot=False, WeightedEnsemble=True)
+    # for chunk in chunks:
+        # data_generator_different_K(Ks=[10], max_samples=100000,
+        #                            chunk_size=chunk, show_plot=False, WeightedEnsemble=True)
 
-    # data_generator_different_K(Ks=Ks,show_plot=False,WeightedEnsemble=False)
+    # data_generator_different_K(Ks=Ks, max_samples=num_chunks * 200,
+    #                            chunk_size=200, show_plot=False, WeightedEnsemble=False)
