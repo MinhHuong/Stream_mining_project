@@ -35,7 +35,7 @@ class WeightedEnsembleClassifier:
             """
             return self.weight < other.weight
 
-    def __init__(self, K=10, base_learner=DecisionTreeClassifier()):
+    def __init__(self, K=10, base_learner=DecisionTreeClassifier(), S=200):
         """
         Create a new ensemble
         :param K:       the maximum number of models allowed in this ensemble
@@ -54,6 +54,13 @@ class WeightedEnsembleClassifier:
         # a sorted list if classifiers
         self.models = sc.SortedList()
 
+        # chunk-related information
+        self.S = S  # chunk size
+        self.p = -1  # chunk pointer
+        self.X_chunk = None
+        self.y_chunk = None
+        self.full_chunk = False
+
     def partial_fit(self, X, y=None, classes=None, weight=None):
         """
         Fit the ensemble to a data chunk
@@ -67,48 +74,67 @@ class WeightedEnsembleClassifier:
                         if not provided, uniform weights are assumed
         :return: self
         """
-
-        # if the classes are not provided, we derive it from y
         N, D = X.shape
 
-        # retrieve the classes and class count
-        if classes is None:
-            classes, class_count = np.unique(y, return_counts=True)
-        else:
-            _, class_count = np.unique(y, return_counts=True)
+        # see if we have enough data to start training
+        if self.p == -1:
+            self.X_chunk = np.zeros((self.S, D))
+            self.y_chunk = np.zeros(self.S)
+            self.p = 0
 
-        # (1) train classifier C' from X by creating a deep copy from the base learner
-        C_new = cp.deepcopy(self.base_learner)
+        for i, x in enumerate(X):
+            self.X_chunk[self.p] = X[i]
+            self.y_chunk[self.p] = y[i]
+            self.p += 1
+            self.full_chunk = False
 
-        try:
-            C_new.fit(X, y)
-        except NotImplementedError:
-            C_new.partial_fit(X, y, classes, weight)
+            if self.p == self.S:
+                # reset the pointer
+                self.p = 0
+                self.full_chunk = True
 
-        # (2) compute error rate/benefit of C_new via cross-validation on S
+                # retrieve the classes and class count
+                if classes is None:
+                    classes, class_count = np.unique(self.y_chunk, return_counts=True)
+                else:
+                    _, class_count = np.unique(self.y_chunk, return_counts=True)
 
-        # MSE_r: compute the baseline error rate given by a random classifier
-        baseline_score = self.compute_random_baseline(X=X, classes=classes, y = y, size=N)
+                # (1) train classifier C' from X by creating a deep copy from the base learner
+                C_new = cp.deepcopy(self.base_learner)
 
-        # (3) derive weight w_new for C_new using (8) MSE or (9) benefit
-        clf_new = self.WeightedClassifier(clf=C_new, weight=0, chunk_labels=classes)
-        w_new = self.compute_weight(X=X, y=y, clf=clf_new, random_score=baseline_score)
-        clf_new.weight = w_new
+                try:
+                    C_new.fit(self.X_chunk, self.y_chunk)
+                except NotImplementedError:
+                    C_new.partial_fit(self.X_chunk, self.y_chunk, classes, weight)
 
-        # (4) update the weights of each classifier in the ensemble
-        for i, model in enumerate(self.models):
-            model.weights = self.compute_weight(X=X, y=y, clf=model, random_score=baseline_score)
+                # MSE_r: compute the baseline error rate given by a random classifier
+                baseline_score = self.compute_random_baseline(classes)
 
-        # (5) C <- top K weighted classifiers in C U { C' }
-        if len(self.models) < self.K:
-            self.models.add(value=clf_new)
-        else:
-            if clf_new.weight > 0 and clf_new.weight > self.models[0].weight:
-                print(clf_new.weight)
-                self.models.pop(0)
-                self.models.add(value=clf_new)
+                # (3) derive weight w_new for C_new using (8) MSE or (9) benefit
+                clf_new = self.WeightedClassifier(clf=C_new, weight=0, chunk_labels=classes)
+                w_new = self.compute_weight(model=clf_new, random_score=baseline_score)
+                clf_new.weight = w_new
+
+                # (4) update the weights of each classifier in the ensemble
+                for i, model in enumerate(self.models):
+                    model.weights = self.compute_weight(model=model, random_score=baseline_score)
+
+                # (5) C <- top K weighted classifiers in C U { C' }
+                if len(self.models) < self.K:
+                    self.models.add(value=clf_new)
+                else:
+                    if clf_new.weight > 0 and clf_new.weight > self.models[0].weight:
+                        self.models.pop(0)
+                        self.models.add(value=clf_new)
+
+                # real shit happens only in CostSensitiveEnsemble
+                self.do_instance_pruning()
 
         return self
+
+    def do_instance_pruning(self):
+        # do nothing here
+        pass
 
     def predict(self, X):
         """
@@ -146,22 +172,9 @@ class WeightedEnsembleClassifier:
 
         return predict_weighted_voting
 
-    def compute_MSE(self, y, probabs, labels):
+    def compute_MSE(self, X, y, model):
         """
         Compute the mean square error of a classifier, via the predicted probabilities.
-
-        It is a bit tricky here:
-        - Suppose that we have a dataset D with 7 labels D_L = [1 2 3 4 5 6 7]; |D_L| = 7
-        - We have a classifier C trained on a chunk of data S where |S| << |D|
-        and in S we only see 4 labels S_L = [1 3 4 6] appear; |S_L| = 4
-        - After being trained, C is able to predict the probability that an example
-        has a label that appears in S_L i.e. the result of C.predict_proba(S)
-        is an array of shape (|S|, 4) instead of (|S|, 7)
-        - Now we want to use C to predict the label probability of a new chunk of data S',
-        and S' may have only 2 unique labels appear in it (for example S'_L = [1 3]), so
-        for an example in S', if we want to ask for the probability of the label 2, C cannot
-        give it to us because it has not seen this label 2 when it is trained on the chunk S.
-        If such case appears we simply set the probability of the missing label to 0
 
         This code needs to take into account the fact that a classifier C trained previously
         on a chunk of data does not yield the probabilities that correspond to another chunk of data
@@ -171,8 +184,9 @@ class WeightedEnsembleClassifier:
         :param labels: the unique labels associated to the classifier that gives this predicted probability
         :return: the mean square error MSE_i
         """
-
         N = len(y)
+        labels = model.chunk_labels
+        probabs = model.clf.predict_proba(X)
         sum_error = 0
         for i, c in enumerate(y):
             # if the label in y is unseen when training, skip it, don't include it in the error
@@ -185,7 +199,7 @@ class WeightedEnsembleClassifier:
 
         return (sum_error / N)
 
-    def compute_weight(self, X, y, clf, random_score):
+    def compute_weight(self, model, random_score):
         """
         Compute the weight of a classifier given the random score (calculated on a random learner).
         The weight relies on either (1) MSE if it is a normal classifier,
@@ -198,10 +212,10 @@ class WeightedEnsembleClassifier:
         :return: the weight of clf
         """
 
-        MSE_i = self.compute_MSE(y=y, probabs=clf.clf.predict_proba(X), labels=clf.chunk_labels)
+        MSE_i = self.compute_MSE(X=self.X_chunk, y=self.y_chunk, model=model)
         return random_score - MSE_i
 
-    def compute_random_baseline(self, X, classes, y, size):
+    def compute_random_baseline(self, classes):
         """
         This method computes the score produced by a random classifier,
         served as a baseline. The random score is MSE_r in case of a normal classifier,
@@ -215,6 +229,6 @@ class WeightedEnsembleClassifier:
 
         # based on the class distribution of the data
         _, class_count = np.unique(classes, return_counts=True)
-        class_dist = [class_count[i] / size for i, c in enumerate(classes)]
+        class_dist = [class_count[i] / self.S for i, c in enumerate(classes)]
         MSE_r = np.sum([class_dist[i] * ((1 - class_dist[i]) ** 2) for i, c in enumerate(classes)])
         return MSE_r
