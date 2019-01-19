@@ -33,8 +33,8 @@ h = [clf, HoeffdingTree()]
 # stream = FileStream(path_data + File +'.csv', n_targets=1, target_idx=-1)
 # stream.prepare_for_use()
 
-evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=50000, show_plot=True,
-                                metrics=['mean_square_error'], output_file='result.csv',
+evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=100000, show_plot=True,
+                                metrics=['accuracy', 'kappa'], output_file='result.csv',
                                 batch_size=1)
 
 # 4. Run
