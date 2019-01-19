@@ -9,7 +9,7 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
     An ensemble that focuses rather on cost-sensitive ensemble classifier
     """
 
-    def __init__(self, K=10, base_learner=DecisionTreeClassifier(), epsilon=3, cost=90):
+    def __init__(self, K=10, base_learner=DecisionTreeClassifier(), epsilon=3, cost=90, fraud_label=1):
         """
         Create a new ensemble
         :param K: the maximum number of models allowed in this ensemble
@@ -25,6 +25,9 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
         # a cost (because it is a cost sensitive classifier)
         self.cost = cost
+
+        # the fraud label as indicated by the users
+        self.fraud_label = fraud_label
 
     def partial_fit(self, X, y=None, classes=None, weight=None):
         """
@@ -255,11 +258,11 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
                 # (1) compute the benefit matrix
                 benefit_c_cprime = 0
                 if c == 1 : # if it's the actual fraud == 1
-                    if cprime == 1 :
+                    if cprime == self.fraud_label:
                         # the amount - the
                         benefit_c_cprime = X[i][-1] - self.cost
                 else : # if it's the actual not fraud == 0
-                    if cprime == 1 :
+                    if cprime == self.fraud_label :
                         benefit_c_cprime= - self.cost
 
                 probab_ic = 0
@@ -290,7 +293,7 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
         return b_i - random_score
 
-    def compute_random_baseline(self, X, classes, y , size):
+    def compute_random_baseline(self, X, classes, y, size):
         """
         Overrides the function defined in the parent class WeightedEnsembleClassifier,
         such that the baseline is now computed by the benefit of a random classifier
@@ -315,11 +318,11 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
                 # (1) compute the benefit matrix
                 benefit_c_cprime = 0
                 if c == 1:  # if it's the actual fraud == 1
-                    if cprime == 1:
+                    if cprime == self.fraud_label:
                         # the amount - the
                         benefit_c_cprime = X[i][-1] - self.cost
                 else:  # if it's the actual not fraud == 0
-                    if cprime == 1:
+                    if cprime == self.fraud_label:
                         benefit_c_cprime = - self.cost
 
                 # (2) get the probability --->

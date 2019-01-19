@@ -201,21 +201,20 @@ class WeightedEnsembleClassifier:
         MSE_i = self.compute_MSE(y=y, probabs=clf.clf.predict_proba(X), labels=clf.chunk_labels)
         return random_score - MSE_i
 
-    def compute_random_baseline(self, classes, y , size):
+    def compute_random_baseline(self, X, classes, y, size):
         """
         This method computes the score produced by a random classifier,
         served as a baseline. The random score is MSE_r in case of a normal classifier,
         but it changes to b_r in case of a cost-sensitive one
         :return:
         """
-        class_count = None  # avoid calling unique multiple times
-        if classes is None:
-            classes, class_count = np.unique(y, return_counts=True)
+
+        # assume uniform distribution
+        # L = len(np.unique(classes))
+        # MSE_r = L * (1 / L) * (1 - 1 / L) ** 2
 
         # based on the class distribution of the data
-        # assume uniform distribution
-        L = len(np.unique(classes))
-        MSE_r = L * (1 / L) * (1 - 1 / L) ** 2
-        # class_dist = [class_count[i] / size for i, c in enumerate(classes)]
-        # MSE_r = np.sum([class_dist[i] * ((1 - class_dist[i]) ** 2) for i, c in enumerate(classes)])
+        _, class_count = np.unique(classes, return_counts=True)
+        class_dist = [class_count[i] / size for i, c in enumerate(classes)]
+        MSE_r = np.sum([class_dist[i] * ((1 - class_dist[i]) ** 2) for i, c in enumerate(classes)])
         return MSE_r

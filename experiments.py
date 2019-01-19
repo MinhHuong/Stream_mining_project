@@ -14,12 +14,12 @@ from skmultiflow.utils import constants
 import pandas as pd
 import matplotlib.pyplot as plt
 
-seed = 420
+seed = 0
 
 hyper_gen = HyperplaneGenerator(random_state=seed,
                                 n_features=10,          # number of features to generate
                                 n_drift_features=2,     # number of features involved in concept drift (k)
-                                mag_change=0.1,         # magnitude of change (t)
+                                mag_change=0,         # magnitude of change (t)
                                 noise_percentage=0.05,  # noise percentage (p)
                                 sigma_percentage=0.1)   # probab that the direction of change is reversed (s_i)
 hyper_gen.prepare_for_use()
