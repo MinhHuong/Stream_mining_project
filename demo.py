@@ -6,7 +6,7 @@ from skmultiflow.trees import HoeffdingTree
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.linear_model import LogisticRegression
-from skmultiflow.data import HyperplaneGenerator
+from skmultiflow.data import HyperplaneGenerator, RandomTreeGenerator
 
 # prepare the stream
 # reuse the electricity stream for test
@@ -25,6 +25,9 @@ hyper_gen = HyperplaneGenerator(random_state=420,
                                 sigma_percentage=0.1)   # probab that the direction of change is reversed (s_i)
 hyper_gen.prepare_for_use()
 
+stream = RandomTreeGenerator()
+stream.prepare_for_use()
+
 # instantiate a classifier
 # clf = CostSensitiveWeightedEnsembleClassifier()
 clf = WeightedEnsembleClassifier(K=10, base_learner=HoeffdingTree())
@@ -32,8 +35,8 @@ clf = WeightedEnsembleClassifier(K=10, base_learner=HoeffdingTree())
 
 
 evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=100000, show_plot=True,
-                                metrics=['accuracy', 'kappa'], output_file='K10_chunk500_MAXSample100000.csv',
+                                metrics=['accuracy', 'kappa'], output_file='result.csv',
                                 batch_size=500)
 
 # 4. Run
-evaluator.evaluate(stream=hyper_gen, model=clf)
+evaluator.evaluate(stream=stream, model=clf)

@@ -210,6 +210,9 @@ class WeightedEnsembleClassifier:
         """
 
         # based on the class distribution of the data
-        class_dist = [class_count[i] / size for i, c in enumerate(classes)]
-        MSE_r = np.sum([class_dist[i] * ((1 - class_dist[i]) ** 2) for i, c in enumerate(classes)])
+        # assume uniform distribution
+        L = len(np.unique(classes))
+        MSE_r = L * (1 / L) * (1 - 1 / L) ** 2
+        # class_dist = [class_count[i] / size for i, c in enumerate(classes)]
+        # MSE_r = np.sum([class_dist[i] * ((1 - class_dist[i]) ** 2) for i, c in enumerate(classes)])
         return MSE_r
