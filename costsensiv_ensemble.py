@@ -64,7 +64,10 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         predict_proba_fraud = len(self.models) * [None]
 
         for i, instance in enumerate(y):  # for each y in S do
+            # here compute the benifit call befinit call
+
             sum_weight = 0
+
             current_F = 0
             F_vect = np.zeros(self.K) # Fk at each stage
             err_x = np.zeros(self.K)  # error at each stage k in K
@@ -160,7 +163,8 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
             k = -1
             for clf in self.models.islice(start=0, stop=self.K, reverse=True):
                 k += 1
-
+                #print(clf.weight)
+                # print(k)
                 # (1) compute the corresponding Fk(x)
                 sum_weight += clf.weight  # sum of weights
 
@@ -212,18 +216,6 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
                             boolean = True
                             prediction[i] = 0
 
-                        # rule_10 = F_k - stat['mean'] - t * stat['var']
-                        #
-                        # if rule_10 > (self.cost / t_y):  # predict fraud : 1
-                        #     boolean = True  # true we found a value
-                        #     prediction.append(1)
-                        # else:
-                        #     rule_10 = F_k + stat['mean'] + t * stat['var']
-                        #
-                        #     if rule_10 <= (self.cost / t_y):  # predict non-fraud : 0
-                        #         boolean = True  # true we found a value
-                        #         prediction.append(0)
-
                     j = j + 1
 
                 if boolean:  # if we found a value we go to the next example
@@ -243,19 +235,47 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
         return prediction
 
-    def compute_benefit(self):
+    def compute_benefit(self, X, y, probabs, labels):
         """
-        Computes the benefit
 
+        Computes the benefit
+        :param y is the real class
         :return:
         """
-        # print("Benefit in CostSensitive")
+        sum_benefit = 0
 
-        return 0
+        for i, c in enumerate(y):
+            # c is the real label
+            # if the label in y is unseen when training, skip it, don't include it in the error
+            # 0 --> not fraud
+            # 1 --> fraud
+
+            for j, cprime in enumerate(labels) :
+
+                # (1) compute the benefit matrix
+                benefit_c_cprime = 0
+                if c == 1 : # if it's the actual fraud == 1
+                    if cprime == 1 :
+                        # the amount - the
+                        benefit_c_cprime = X[i][-1] - self.cost
+                else : # if it's the actual not fraud == 0
+                    if cprime == 1 :
+                        benefit_c_cprime= - self.cost
+
+                probab_ic = 0
+
+                # (2) get the probability
+                if cprime in labels:
+                    index_label_cprime = np.where(np.array(labels) == cprime)[0][0]  # find the index of this label c in probabs[i]
+                    probab_ic = probabs[i][index_label_cprime]
+
+                sum_benefit += probab_ic * benefit_c_cprime
+
+        return sum_benefit
 
     def compute_weight(self, X, y, clf, random_score):
         """
-        Overrides the function defined in the parent class WeightedEnsembleClassifier,
+         Overrides the function defined in the parent class WeightedEnsembleClassifier,
         such that the weight is now computed by the benefits and not MSE
 
         :param X:
@@ -264,12 +284,13 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         :param random_score:
         :return:
         """
-        # print("Weight in CostSensitive")
 
-        b_i = self.compute_benefit()
+
+        b_i = self.compute_benefit( X, y, probabs=clf.clf.predict_proba(X), labels=clf.chunk_labels)
+
         return b_i - random_score
 
-    def compute_random_baseline(self, classes, class_count, size):
+    def compute_random_baseline(self, X, classes, y , size):
         """
         Overrides the function defined in the parent class WeightedEnsembleClassifier,
         such that the baseline is now computed by the benefit of a random classifier
@@ -279,6 +300,32 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         :param size:
         :return:
         """
-        # print("Random baseline in CostSensitive")
 
-        return 0
+        # based on the class distribution of the data
+        sum_benefit = 0
+
+        for i, c in enumerate(y):
+            # c is the real label
+            # if the label in y is unseen when training, skip it, don't include it in the error
+            # 0 --> not fraud
+            # 1 --> fraud
+
+            for j, cprime in enumerate(classes):
+
+                # (1) compute the benefit matrix
+                benefit_c_cprime = 0
+                if c == 1:  # if it's the actual fraud == 1
+                    if cprime == 1:
+                        # the amount - the
+                        benefit_c_cprime = X[i][-1] - self.cost
+                else:  # if it's the actual not fraud == 0
+                    if cprime == 1:
+                        benefit_c_cprime = - self.cost
+
+                # (2) get the probability --->
+
+                probab_ic = 1 / len(classes)
+
+                sum_benefit += probab_ic * benefit_c_cprime
+
+        return sum_benefit

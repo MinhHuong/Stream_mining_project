@@ -1,4 +1,6 @@
 __pycache__
+*.csv
 __init__.py
 data
 result*.csv
+experiments
