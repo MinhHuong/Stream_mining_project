@@ -9,7 +9,7 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
     An ensemble that focuses rather on cost-sensitive ensemble classifier
     """
 
-    def __init__(self, K=10, base_learner=DecisionTreeClassifier(), S=200, epsilon=3, cost=90, fraud_label=1):
+    def __init__(self, K=10, base_learner=DecisionTreeClassifier(), S=200, epsilon=3, cost=90, fraud_label=1,  do_class_with_IBP = True):
         """
         Create a new ensemble
         :param K: the maximum number of models allowed in this ensemble
@@ -28,6 +28,19 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
         # the fraud label as indicated by the users
         self.fraud_label = fraud_label
+
+        # total benefit  --> hepl in the experimental part to plot the total benefit
+        self.total_benefit = 0
+
+        # for the experiments we compare if instance based pruning with the classical ensemble
+        self.do_class_with_IBP = do_class_with_IBP
+
+        # for each experiments we compute the average number of classifiers used to classify examples
+        self.avg_k_used = 0
+
+        # count all the samples predicted in order to get the average of the k classifiers used
+        self.samples = 0
+
 
     def partial_fit(self, X, y=None, classes=None, weight=None):
         """
@@ -87,7 +100,7 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
                 # compute the curent probability
                 # if the probability is not initialized we call the predict proba method
                 try:
-                    if predict_proba_fraud[k] == None:
+                    if predict_proba_fraud[k] == None :
                         predict_proba_fraud[k] = clf.predict_proba(self.X_chunk)
                 except:
                     # it's a bit tricky to test boolean values on a  numpy array
@@ -152,98 +165,107 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
         N, D = X.shape
 
-        # init prediction array
-        prediction = np.array([-1] * N)
+        if self.do_class_with_IBP == False:
 
-        # retrieve the probability of predicting fraud for each model (K models)
-        predict_proba_fraud = len(self.models) * [None]
+            return super().predict(X)
+        else:
+            # init prediction array
+            prediction = np.array([-1] * N)
+    
+            # retrieve the probability of predicting fraud for each model (K models)
+            predict_proba_fraud = len(self.models) * [None]
+    
+            #  we do the computation for all input test examples
+            for i, instance in enumerate(X):
+                self.samples += 1
+                sum_weight = 0
+                F_k = 0
+    
+                # for k in= {1,2.....K} do
+                k = -1
+                for clf in self.models.islice(start=0, stop=self.K, reverse=True):
+                    k += 1
 
-        #  we do the computation for all input test examples
-        for i, instance in enumerate(X):
-            sum_weight = 0
-            F_k = 0
+                    # (1) compute the corresponding Fk(x)
+                    sum_weight += clf.weight  # sum of weights
+    
+                    # compute one part of Fk(y) with the weights (be careful: sum_weight may be 0)
+                    F_k = (F_k * sum_weight) / sum_weight if sum_weight != 0 else 0
+    
+                    # to compute the other part with the proba we consult th eproba first in the array index
+                    # if the probability is not initialized we call the predict proba method
+                    try:
+                        if predict_proba_fraud[k] == None:
+                            predict_proba_fraud[k] = clf.clf.predict_proba(X)
+                    except:
+                        # it's a bit tricky to test boolean values on a numpy array
+                        # that is not empty so we use .any() method instead
+                        if predict_proba_fraud[k].any() == None:
+                            predict_proba_fraud[k] = clf.clf.predict_proba(X)
+    
+                    # if we don't have the probability of predicting fraud it will be  0 so we don't do anything
+                    # fraud is equal to 1
+                    if len(predict_proba_fraud[k][i]) == 2:
+                        F_k += (clf.weight * predict_proba_fraud[k][i][1]) / sum_weight
+    
+                    # we take the amount of the transaction
+                    # which we will find it in the last column feature. to apply rules (10)
+                    t_y = instance[-1]
+    
+                    # (2) we assign Fk value to a bin i (or j in our case)
+                    # because we used i index before (k is fixed)
+    
+                    # i use the boolean values to remember
+                    # if i find a value because using 2 times break doesn't work here
+                    boolean = False
+                    j = 0
+                    eps = len(self.bins)
+    
+                    # while we haven't found the bin AND no prediction has not yet been given
+                    while j < eps and not boolean:
+                        stat = self.bins[j][k]
+    
+                        # find the bin i y belongs to
+                        if F_k >= (j / eps) and F_k < ((j + 1) / eps):
+                            # (3) apply rule (10) for this bin
+    
+                            # What if the amount is 0 ?
+                            if t_y != 0:
+                                if F_k - stat['mean'] - t * stat['var'] > (self.cost / t_y): # FRAUD
+                                    boolean = True
+                                    prediction[i] = 1
+                                elif F_k + stat['mean'] + t * stat['var'] <= (self.cost / t_y): # NON-FRAUD
+                                    boolean = True
+                                    prediction[i] = 0
 
-            # for k in= {1,2.....K} do
-            k = -1
-            for clf in self.models.islice(start=0, stop=self.K, reverse=True):
-                k += 1
-                #print(clf.weight)
-                # print(k)
-                # (1) compute the corresponding Fk(x)
-                sum_weight += clf.weight  # sum of weights
-
-                # compute one part of Fk(y) with the weights (be careful: sum_weight may be 0)
-                F_k = (F_k * sum_weight) / sum_weight if sum_weight != 0 else 0
-
-                # to compute the other part with the proba we consult th eproba first in the array index
-                # if the probability is not initialized we call the predict proba method
-                try:
-                    if predict_proba_fraud[k] == None:
-                        predict_proba_fraud[k] = clf.clf.predict_proba(X)
-                except:
-                    # it's a bit tricky to test boolean values on a numpy array
-                    # that is not empty so we use .any() method instead
-                    if predict_proba_fraud[k].any() == None:
-                        predict_proba_fraud[k] = clf.clf.predict_proba(X)
-
-                # if we don't have the probability of predicting fraud it will be  0 so we don't do anything
-                # fraud is equal to 1
-                if len(predict_proba_fraud[k][i]) == 2:
-                    F_k += (clf.weight * predict_proba_fraud[k][i][1]) / sum_weight
-
-                # we take the amount of the transaction
-                # which we will find it in the last column feature. to apply rules (10)
-                t_y = instance[-1]
-
-                # (2) we assign Fk value to a bin i (or j in our case)
-                # because we used i index before (k is fixed)
-
-                # i use the boolean values to remember
-                # if i find a value because using 2 times break doesn't work here
-                boolean = False
-                j = 0
-                eps = len(self.bins)
-
-                # while we haven't found the bin AND no prediction has not yet been given
-                while j < eps and not boolean:
-                    stat = self.bins[j][k]
-
-                    # find the bin i y belongs to
-                    if F_k >= (j / eps) and F_k < ((j + 1) / eps):
-                        # (3) apply rule (10) for this bin
-
-                        # What if the amount is 0 ?
-                        if t_y != 0:
-                            if F_k - stat['mean'] - t * stat['var'] > (self.cost / t_y): # FRAUD
-                                boolean = True
-                                prediction[i] = 1
-                            elif F_k + stat['mean'] + t * stat['var'] <= (self.cost / t_y): # NON-FRAUD
+                            else:
                                 boolean = True
                                 prediction[i] = 0
-                        else:
-                            boolean = True
-                            prediction[i] = 0
+    
+                        j = j + 1
+    
+                    if boolean:  # if we found a value we go to the next example
+                        # because if k == 0 means we have 1 model in the ensemble+
+                        self.avg_k_used += k+1
+                        break
+    
+                # (4) if no classifier left
+    
+                # Huong: I change the condition here a bit:
+                # if no classifier left i.e. we have consulted every clf in the ensemble
+                # without obtaining a certain answer --> prediction[i] is not yet given
+                # so we just need to check whether prediction[i] is -1
+                if prediction[i] == -1:
+                    self.avg_k_used += k + 1
+                    if instance[-1] != 0 and F_k > self.cost / instance[-1]:  # instance[-1] is just t(y)
+                        prediction[i] = 1
+                    else:
+                        prediction[i] = 0
 
-                    j = j + 1
-
-                if boolean:  # if we found a value we go to the next example
-                    break
-
-            # (4) if no classifier left
-
-            # Huong: I change the condition here a bit:
-            # if no classifier left i.e. we have consulted every clf in the ensemble
-            # without obtaining a certain answer --> prediction[i] is not yet given
-            # so we just need to check whether prediction[i] is -1
-            if prediction[i] == -1:
-                if instance[-1] != 0 and F_k > self.cost / instance[-1]:  # instance[-1] is just t(y)
-                    prediction[i] = 1
-                else:
-                    prediction[i] = 0
-
-        return prediction
+            return prediction
 
     def compute_benefit(self, model):
+
         """
 
         Computes the benefit
@@ -267,6 +289,9 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
                 if c == self.fraud_label : # if it's the actual fraud == 1
                     if cprime == self.fraud_label:
                         benefit_c_cprime = self.X_chunk[i][-1] - self.cost
+
+                        # we update the total benefit --> sum of recovered amount of fraudulent transaction less the investigation cost
+                        self.total_benefit += benefit_c_cprime
                 else:
                     if cprime == self.fraud_label :
                         benefit_c_cprime= - self.cost
