@@ -134,10 +134,54 @@ def plot_IBR(name1, name2):
     plt.show()
 
 
+
+def plot_IBR_BARS(name1, name2):
+    with open(str(name1) + '.csv') as f:
+        csv_reader = csv.reader(f, delimiter=',')
+
+        X_axis1 = []
+
+        for row in  csv_reader:
+            if row != [] :
+                X_axis1.append(float("%.5f" % float(row[0])))
+
+    with open(str(name2) + '.csv') as f:
+        csv_reader = csv.reader(f, delimiter=',')
+        X_axis2 = []
+
+        for row in  csv_reader:
+            if row != [] :
+                X_axis2.append(float("%.5f" % float(row[0] )))
+    plt.figure(figsize=(7, 5))
+    ax = plt.subplot(111)
+    index = np.arange(1,33,2)
+    index2 = np.arange(1, 66,2)
+
+    ax.bar(index  , np.take(X_axis1, index), width=0.9,align='edge', label="Instance-based Pruning")
+    ax.bar(index ,np.take(X_axis2, index),width=-0.9, align='edge', label="Classifier Ensemble Ek")
+
+    plt.xticks(index)
+    plt.yticks(index)
+    plt.xlabel("# of Classifiers in the ensembles")
+    plt.ylabel("# of Classifiers actually used")
+    plt.title("reduction of ensemble size by insatnce-based pruning")
+    plt.legend()
+    
+    plt.show()
+
+
+
+
+
+
+
+
 # pruning_method()
 # plot_IBR('pruning_method')
 
 #No_pruning_method()
 
 
-plot_IBR('pruning_method','No_pruning_method')
+# plot_IBR('pruning_method','No_pruning_method')
+
+plot_IBR_BARS('pruning_method','No_pruning_method')
