@@ -27,15 +27,15 @@ stream.prepare_for_use()
 
 # instantiate a classifier
 # clf = CostSensitiveWeightedEnsembleClassifier()
-clf = WeightedEnsembleClassifier(K=10, base_learner=HoeffdingTree())
+clf = WeightedEnsembleClassifier(K=10, base_learner=HoeffdingTree(), S=200)
 h = [clf, HoeffdingTree()]
 
 # stream = FileStream(path_data + File +'.csv', n_targets=1, target_idx=-1)
 # stream.prepare_for_use()
 
-evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=100000, show_plot=True,
+evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=100000, show_plot=False,
                                 metrics=['accuracy', 'kappa'], output_file='result.csv',
                                 batch_size=1)
 
 # 4. Run
-evaluator.evaluate(stream=stream, model=h, model_names=["AWE", "Hoeffding Tree"])
+evaluator.evaluate(stream=stream, model=h, model_names=["AWE", "HT"])

@@ -19,7 +19,7 @@ seed = 0
 hyper_gen = HyperplaneGenerator(random_state=seed,
                                 n_features=10,          # number of features to generate
                                 n_drift_features=2,     # number of features involved in concept drift (k)
-                                mag_change=0,         # magnitude of change (t)
+                                mag_change=0.1,         # magnitude of change (t)
                                 noise_percentage=0.05,  # noise percentage (p)
                                 sigma_percentage=0.1)   # probab that the direction of change is reversed (s_i)
 hyper_gen.prepare_for_use()
@@ -111,7 +111,7 @@ def data_generator_different_chunk(chunk_sizes, pretrain_size=1000, max_samples=
     return df
 
 def data_generator_different_K(Ks, chunk_size=500, pretrain_size=1000,
-                               max_samples=20000, learner=DecisionTreeClassifier(),
+                               max_samples=20000, learner=HoeffdingTree(),
                                WeightedEnsemble=True, show_plot=True):
     # single Gk is wrong right now, there is no K for single Gk
     df = pd.DataFrame()
@@ -122,11 +122,11 @@ def data_generator_different_K(Ks, chunk_size=500, pretrain_size=1000,
         output_summary = 'experiments/'
 
         if WeightedEnsemble:
-            output_file += 'ensemble_k10/'
-            output_summary += 'ensemble_k10/'
+            output_file += 'ensemble_fixed/'
+            output_summary += 'ensemble_fixed/'
         else:
-            output_file += 'single_k10/'
-            output_summary += 'single_k10/'
+            output_file += 'single/'
+            output_summary += 'single/'
 
         output_file += 'diff_k/'
         output_summary += 'diff_k/summary/'
@@ -142,10 +142,10 @@ def data_generator_different_K(Ks, chunk_size=500, pretrain_size=1000,
 
         evaluator = EvaluatePrequential(pretrain_size=pretrain_size, max_samples=max_samples, show_plot=show_plot,
 		                                metrics=['accuracy', 'kappa'], output_file=output_file+'.csv',
-		                                batch_size=chunk_size)
+		                                batch_size=1)
 
         if WeightedEnsemble:
-            clf = WeightedEnsembleClassifier(K=K, base_learner=learner)
+            clf = WeightedEnsembleClassifier(K=K, base_learner=learner, S=chunk_size)
         else:
             #clf = DecisionTreeClassifier()
             clf = HoeffdingTree() #TODO --> like 6.1 paper
@@ -169,9 +169,8 @@ def data_generator_different_K(Ks, chunk_size=500, pretrain_size=1000,
 
 
 if __name__ == '__main__':
-    num_chunks = 100
-    # chunks = range(200, 1100, 100)
-    chunks = [100]
+    num_chunks = 1000
+    chunks = range(200, 1100, 100)
     Ks = range(1, 31, 1)
     # data_generator_different_chunk(chunk_sizes=chunks, max_samples=100000, K=10,
     #                                show_plot=False, WeightedEnsemble=True)
@@ -179,8 +178,9 @@ if __name__ == '__main__':
     # data_generator_different_chunk(chunk_sizes=chunks,show_plot=False,WeightedEnsemble=False)
 
     for chunk in chunks:
-        data_generator_different_K(Ks=[5], max_samples=num_chunks * chunk,
-                                   chunk_size=chunk, show_plot=False, WeightedEnsemble=True)
+        data_generator_different_K(Ks=[5, 10, 15], max_samples=num_chunks * chunk,
+                                   chunk_size=chunk, show_plot=False, WeightedEnsemble=True,
+                                   learner=HoeffdingTree())
 
     # data_generator_different_K(Ks=Ks, max_samples=num_chunks * 200,
     #                            chunk_size=200, show_plot=False, WeightedEnsemble=False)
