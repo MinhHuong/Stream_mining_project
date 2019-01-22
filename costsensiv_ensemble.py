@@ -58,6 +58,9 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         # confidence level
         self.t = t
 
+        # count all the samples predicted in order to get the average of the k classifiers used
+        self.samples = 0
+
     def partial_fit(self, X, y=None, classes=None, weight=None):
         """
         Fits the ensemble to a data chunk. It inherits the Algorithm 1 as described in the paper
