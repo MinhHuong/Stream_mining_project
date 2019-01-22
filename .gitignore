@@ -4,3 +4,4 @@ __init__.py
 data
 result*.csv
 experiments
+.ipynb_checkpoints
