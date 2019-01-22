@@ -222,17 +222,16 @@ class WeightedEnsembleClassifier:
 
         return sum_error / N
 
-    def compute_weight(self, model, random_score, cv=None):
+    def compute_score_crossvalidation(self, model, cv):
         """
-        Compute the weight of a classifier given the random score (calculated on a random learner).
-        The weight relies on either (1) MSE if it is a normal classifier,
-        or (2) benefit if it is a cost-sensitive classifier
+        Computes the score of interests, using cross-validation or not.
 
-        :param model: the learner to compute w on
-        :param random_score: the baseline calculated on a random learner
-        :param cv: do cross validation or not, if cv is not None (and is a number) we will do cv-fold
-        :return: the weight of clf
+        :param model: the model to compute the score on
+        :param cv: the number of folds, if None, the score is computed directly on the entire data chunk,
+        else, we proceed as in traditional cross-validation setting
+        :return: the score of interest
         """
+
         if cv is not None and type(cv) is int:
             # we create a copy because we don't want to "modify" an already trained model
             copy_model = cp.deepcopy(model)
@@ -245,11 +244,27 @@ class WeightedEnsembleClassifier:
                     copy_model.clf.fit(X_train, y_train)
                 except NotImplementedError:
                     copy_model.clf.partial_fit(X_train, y_train, copy_model.chunk_labels, None)
-
                 score += self.compute_score(model=copy_model, X=X_test, y=y_test) / self.cv
         else:
-            # compute the score on the entire data
+            # compute the score on the entire data chunk
             score = self.compute_score(X=self.X_chunk, y=self.y_chunk, model=model)
+
+        return score
+
+    def compute_weight(self, model, random_score, cv=None):
+        """
+        Compute the weight of a classifier given the random score (calculated on a random learner).
+        The weight relies on either (1) MSE if it is a normal classifier,
+        or (2) benefit if it is a cost-sensitive classifier
+
+        :param model: the learner to compute w on
+        :param random_score: the baseline calculated on a random learner
+        :param cv: do cross validation or not, if cv is not None (and is a number) we will do cv-fold
+        :return: the weight decided by the MSE score of the classifier
+        """
+
+        # compute MSE, with cross-validation or not
+        score = self.compute_score_crossvalidation(model=model, cv=cv)
 
         # w = MSE_r = MSE_i
         return random_score - score

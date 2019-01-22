@@ -5,8 +5,6 @@
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier
 from ensemble import WeightedEnsembleClassifier
-from sklearn.model_selection import StratifiedKFold
-import copy as cp
 
 
 __author__ = "Armita KHAJEHNASSIRI, Soumeya KAADA, Minh-Huong LE-NGUYEN"
@@ -16,6 +14,14 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
     """An extension of weighted ensemble classifier
     that focuses rather on cost-sensitive applications.
     This ensemble classifier only works with BINARY classification (for now).
+
+    This ensemble classifier depends heavily on the dataset being used,
+    for instance, what are the labels for fraud/non-fraud, where are the transactions
+    stored in the incoming streams, etc.
+
+    Therefore, the source code needs to be tweaked accordingly to the dataset.
+    We are still thinking of a more generic approach that eases the use of
+    this extended classifier.
 
     The implementation follows the techniques described in
     "Mining Concept-Drifting Data Streams using Ensemble Classifiers",
@@ -41,7 +47,7 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         super().__init__(K=K, base_learner=base_learner, S=S, cv=cv)
 
         # init statistics of bins (i,k) each epsilon bin has an array k
-        self.bins = epsilon * [K * [{'mean': 0, 'var': 0, 'num': 0}]]
+        self.bins = epsilon * [K * [{'mean': 0.0, 'var': 0.0, 'num': 0}]]
 
         # a cost (because it is a cost sensitive classifier)
         self.cost = cost
@@ -80,7 +86,8 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         """
 
         # retrieve the probability of predicting fraud for each model (K models)
-        predict_proba_fraud = len(self.models) * [None]
+        # size: K x ChunkSize x 2 (2 for binary labels)
+        predict_proba_fraud = [-1] * self.K
 
         # for each instance in the data chunk
         for i, instance in enumerate(self.y_chunk):
@@ -97,15 +104,11 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
                 # compute the current probability
                 # if the probability is not initialized we call the `predict_proba` method
-                try:
-                    if predict_proba_fraud[k] == None:
-                        predict_proba_fraud[k] = clf.predict_proba(self.X_chunk)
-                except:
-                    # it's a bit tricky to test boolean values on a  numpy array
-                    # that is not empty so we use .any() method instead
-                    if predict_proba_fraud[k].any() == None:
-                        predict_proba_fraud[k] = clf.predict_proba(self.X_chunk)
+                if (type(predict_proba_fraud[k]) is int and predict_proba_fraud[k] == -1) \
+                        or (predict_proba_fraud[k].shape[0] != self.S):
+                    predict_proba_fraud[k] = clf.predict_proba(self.X_chunk)
 
+                # check if we have the probabilities of 2 labels (because we're working with BINARY classification)
                 # if we don't have the probability of predicting fraud it will be 0 so we don't do anything
                 if len(predict_proba_fraud[k][i]) == 2:
                     current_F += model.weight * predict_proba_fraud[k][i][1]
@@ -120,11 +123,10 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
             # (4) update the mean and the variance of the error of these training examples for each bin (i,k)
             # we look at the error at each step for the given example
             for k, err in enumerate(err_x):
-
                 # 1 --> we assign Fk to the corresponding bin (i,k) or (j,k)here because we used i index before
                 eps = len(self.bins)
-                for j in range(0, eps):
 
+                for j in range(0, eps):
                     if (j / eps) <= F_vect[k] < ((j + 1) / eps):
                         self.bins[j][k]['num'] += 1
 
@@ -135,13 +137,12 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
                         # (basically we will just compute the squared error and do the division later)
                         self.bins[j][k]['var'] += err ** 2
 
-                        # if we assign go to the next stage
+                        # if we've assigned it to a bin, break and go to the next stage
                         break
 
         # after computing everything we do the division by the total number assigned to a bin
         for i in range(0, len(self.bins)):
-            # it's a bit tricky because sometimes we can have bins that don't have any input example
-            # --> it remains at 0
+            # a bit tricky because sometimes we have bins that don't have any input example --> remains at 0
             for k in range(self.K):
                 if self.bins[i][k]['num'] > 0:
                     # divide the sum of error by the number of examples in the bin
@@ -158,18 +159,17 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         the confidence level we have every time we ask a classifier in the ensemble.
         The process stops if we are confident enough and do not need to consult more classifiers.
         But if there is no more classifier in the ensemble, we return the current prediction.
-        
+
         :param X: the given test examples
         :return: the prediction (array of shape X.shape[1])
         """
-
         N, D = X.shape
 
         # init prediction array
         prediction = np.array([-1] * N)
 
         # retrieve the probability of predicting fraud for each model (K models)
-        predict_proba_fraud = len(self.models) * [None]
+        predict_proba_fraud = [-1] * self.K
 
         #  we do the computation for all input test examples
         for i, instance in enumerate(X):
@@ -178,71 +178,55 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
 
             # for k in= {1,2.....K} do
             k = -1
-            for clf in self.models.islice(start=0, stop=self.K, reverse=True):
+            for model in self.models.islice(start=0, stop=self.K, reverse=True):
                 k += 1
-                # (1) compute the corresponding Fk(x)
-                sum_weight += clf.weight  # sum of weights
+                clf = model.clf
+                sum_weight += model.weight
 
+                # (1) compute the corresponding Fk(x)
                 # compute one part of Fk(y) with the weights (be careful: sum_weight may be 0)
                 F_k = (F_k * sum_weight) / sum_weight if sum_weight != 0 else 0
 
-                # to compute the other part with the proba we consult th eproba first in the array index
                 # if the probability is not initialized we call the predict proba method
-                try:
-                    if predict_proba_fraud[k] == None:
-                        predict_proba_fraud[k] = clf.clf.predict_proba(X)
-                except:
-                    # it's a bit tricky to test boolean values on a numpy array
-                    # that is not empty so we use .any() method instead
-                    if predict_proba_fraud[k].any() == None:
-                        predict_proba_fraud[k] = clf.clf.predict_proba(X)
+                if (type(predict_proba_fraud[k]) is int and predict_proba_fraud[k] == -1) \
+                        or (predict_proba_fraud[k].shape[0] != self.S):
+                    predict_proba_fraud[k] = clf.predict_proba(self.X_chunk)
 
-                # if we don't have the probability of predicting fraud it will be  0 so we don't do anything
-                # fraud is equal to 1
+                # if we don't have the probability of predicting fraud --> p = 0, do nothing
                 if len(predict_proba_fraud[k][i]) == 2:
-                    F_k += (clf.weight * predict_proba_fraud[k][i][1]) / sum_weight
+                    F_k += (model.weight * predict_proba_fraud[k][i][1]) / sum_weight
 
-                # we take the amount of the transaction
-                # which we will find it in the last column feature. to apply rules (10)
-                t_y = instance[-1]
-
-                # (2) we assign Fk value to a bin i (or j in our case)
-                # because we used i index before (k is fixed)
-
-                # i use the boolean values to remember
-                # if i find a value because using 2 times break doesn't work here
-                boolean = False
+                # (2) we assign Fk value to a bin j
+                t_y = instance[-1]  # amount of the transaction (in the last column of the features)
+                found = False  # found: if a label has been decided (deal with 2 for's break)
                 j = 0
                 eps = len(self.bins)
 
                 # while we haven't found the bin AND no prediction has not yet been given
-                while j < eps and not boolean:
+                while j < eps and not found:
                     stat = self.bins[j][k]
 
                     # find the bin i y belongs to
                     if (j / eps) <= F_k < ((j + 1) / eps):
-                        # (3) apply rule (10) for this bin
-                        # What if the amount is 0 ?
+                        # (3) apply rule (10) for this bin (What if the amount is 0 ?)
                         if t_y != 0:
                             if F_k - stat['mean'] - self.t * stat['var'] > (self.cost / t_y):  # FRAUD
-                                boolean = True
+                                found = True
                                 prediction[i] = 1
                             elif F_k + stat['mean'] + self.t * stat['var'] <= (self.cost / t_y):  # NON-FRAUD
-                                boolean = True
+                                found = True
                                 prediction[i] = 0
                         else:
-                            boolean = True
+                            found = True
                             prediction[i] = 0
 
                     j = j + 1
 
-                if boolean:  # if we found a value we go to the next example
+                if found:  # if we found a value we go to the next example
                     break
 
-            # (4) if no classifier left
-            # if no classifier left i.e. we have consulted every classifier in the ensemble
-            # without obtaining a certain answer --> prediction[i] is not yet given
-            # so we just need to check whether prediction[i] is -1
+            # (4) if no classifier left i.e. we have consulted every classifier without having an answer
+            # --> prediction[i] is not yet given
             if prediction[i] == -1:
                 if instance[-1] != 0 and F_k > self.cost / instance[-1]:  # instance[-1] is just t(y)
                     prediction[i] = 1
@@ -265,23 +249,17 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         probabs = model.clf.predict_proba(self.X_chunk)
         chunk_classes, chunk_classes_count = np.unique(self.y_chunk, return_counts=True)
 
+        # for every actual label in y
+        # if the label in y is unseen when training, skip it, don't include it in the error
         for i, c in enumerate(self.y_chunk):
-            # c is the real label
-            # if the label in y is unseen when training, skip it, don't include it in the error
-            # 0 --> not fraud
-            # 1 --> fraud
-
-            for j, cprime in enumerate(chunk_classes) :
+            for j, cprime in enumerate(chunk_classes):
 
                 # (1) compute the benefit matrix
                 benefit_c_cprime = 0
-                if c == self.fraud_label :  # if it's the actual fraud == 1
-                    if cprime == self.fraud_label:
-                        benefit_c_cprime = self.X_chunk[i][-1] - self.cost
-                else:
-                    if cprime == self.fraud_label :
-                        benefit_c_cprime= - self.cost
+                if cprime == self.fraud_label:
+                    benefit_c_cprime = self.X_chunk[i][-1] - self.cost if c == self.fraud_label else -self.cost
 
+                # compute the probability f_i_cprime(x)
                 probab_ic = 0
                 if cprime in model.chunk_labels:
                     try:
@@ -300,25 +278,11 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         :param model: the learner
         :param random_score: the baseline score
         :param cv: number of folds to do cross-validation
-        :return:
+        :return: the weight decided by benefit of the given model
         """
-        if cv is not None and type(cv) is int:
-            # we create a copy because we don't want to "modify" an already trained model
-            copy_model = cp.deepcopy(model)
-            score = 0
-            sf = StratifiedKFold(n_splits=self.cv, shuffle=True, random_state=0)
-            for train_idx, test_idx in sf.split(X=self.X_chunk, y=self.y_chunk):
-                X_train, y_train = self.X_chunk[train_idx], self.y_chunk[train_idx]
-                X_test, y_test = self.X_chunk[test_idx], self.y_chunk[test_idx]
-                try:
-                    copy_model.clf.fit(X_train, y_train)
-                except NotImplementedError:
-                    copy_model.clf.partial_fit(X_train, y_train, copy_model.chunk_labels, None)
 
-                score += self.compute_score(model=copy_model, X=X_test, y=y_test) / self.cv
-        else:
-            # compute the score on the entire data
-            score = self.compute_score(X=self.X_chunk, y=self.y_chunk, model=model)
+        # compute the benefit (with cross-validation or not)
+        score = super().compute_score_crossvalidation(model=model, cv=cv)
 
         # w = b_i - b_r
         return score - random_score
@@ -335,23 +299,15 @@ class CostSensitiveWeightedEnsembleClassifier(WeightedEnsembleClassifier):
         # based on the class distribution of the data
         sum_benefit = 0
 
+        # c is the actual label
+        # if the label in y is unseen when training, skip it, don't include it in the error
         for i, c in enumerate(self.y_chunk):
-            # c is the real label
-            # if the label in y is unseen when training, skip it, don't include it in the error
-            # 0 --> not fraud
-            # 1 --> fraud
-
             for j, cprime in enumerate(classes):
 
                 # (1) compute the benefit matrix
                 benefit_c_cprime = 0
-                if c == 1:  # if it's the actual fraud == 1
-                    if cprime == self.fraud_label:
-                        # the amount - the
-                        benefit_c_cprime = self.X_chunk[i][-1] - self.cost
-                else:   # if it's the actual not fraud == 0
-                    if cprime == self.fraud_label:
-                        benefit_c_cprime = - self.cost
+                if cprime == self.fraud_label:
+                    benefit_c_cprime = self.X_chunk[i][-1] - self.cost if c == self.fraud_label else -self.cost
 
                 # (2) get the probability
                 probab_ic = 1 / len(classes)

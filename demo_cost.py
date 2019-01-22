@@ -17,9 +17,9 @@ stream = FileStream(path_data + file +'.csv', n_targets=1, target_idx=-1)
 stream.prepare_for_use()
 
 # instantiate a classifier
-clf = CostSensitiveWeightedEnsembleClassifier(base_learner=HoeffdingTree(), S=500, K=10, cv=5)
+clf = CostSensitiveWeightedEnsembleClassifier(base_learner=HoeffdingTree(), S=250, K=10, cv=None)
 
-evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=100000, show_plot=False,
+evaluator = EvaluatePrequential(pretrain_size=1000, max_samples=20000, show_plot=True,
                                 metrics=['accuracy', 'kappa'], output_file='result.csv',
                                 batch_size=1)
 
